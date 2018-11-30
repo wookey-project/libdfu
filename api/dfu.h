@@ -127,4 +127,10 @@ typedef struct  {
 
 } dfu_context_t;
 
+void dfu_early_init(void);
+
+void dfu_init(void);
+
+void dfu_early_init(void);
+
 #endif

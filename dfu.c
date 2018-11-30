@@ -541,17 +541,23 @@ static void dfu_class_request_handler(struct usb_setup_packet *setup_packet){
 
 
 
-static void dfu_data_in_handler(uint32_t size) {
-    printf("%ld bytes sent\n", size);
+static void dfu_data_in_handler(void) {
+    printf("bytes sent\n");
     if (dfu_ctx->block_in_progress == 1){
         dfu_ctx->block_in_progress = 0;
     }
+}
+
+void dfu_early_init(void)
+{
+	usb_driver_early_init(dfu_data_out_handler, dfu_data_in_handler);
 }
 
 
 void dfu_init(void)
 {
 
+    usb_driver_map();
 #ifdef CONFIG_STD_MALLOC_LIGHT
     wmalloc_init();
 	//wmalloc(DFU_DATA_QUEUE_MAX_SIZE*sizeof(uint8_t), ALLOC_NORMAL);
