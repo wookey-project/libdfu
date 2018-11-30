@@ -1,9 +1,10 @@
 #ifndef _USB_DFU_UTILS_H
 #define _USB_DFU_UTILS_H
 
-#include "stm32f4xx_usb.h"
+#include "api/types.h"
 #include "api/print.h"
 #include "api/regutils.h"
+#include "usb.h"
 /* usb driver control header */
 #include "usb_control.h"
 

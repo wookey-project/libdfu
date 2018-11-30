@@ -1,0 +1,11 @@
+config USR_LIB_DFU
+  bool  "userspace USB DFU protocol stack"
+  default y
+  select USR_DRV_USB
+  ---help---
+  Support for Device Firmware Update protocol stack.
+config USR_LIB_DFU_CFLAGS
+  string
+  default " -I../../libs/dfu/api " if USR_LIB_DFU
+
+

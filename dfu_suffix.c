@@ -3,6 +3,7 @@
  */
 
 #include "dfu_suffix.h"
+#include "api/print.h"
 
 #define DFU_SUFFIX_LENGTH 16
 
@@ -58,7 +59,7 @@ uint32_t crc32_byte(uint32_t accum, uint8_t delta)
 }
 
 
-int parse_dfu_suffix(dfu_suffix_t dfu_suffix, 	uint8_t *firmware)
+int parse_dfu_suffix(dfu_suffix_t *dfu_suffix, 	uint8_t *firmware)
 {
 	int ret = 0;
 
@@ -69,24 +70,27 @@ int parse_dfu_suffix(dfu_suffix_t dfu_suffix, 	uint8_t *firmware)
 	dfu_suffix->idProduct = 0xffff;
 	dfu_suffix->bcdDevice = 0xffff;
 
-    if ((sizeof(firmware)/sizeof(uint8_t)) < sizeof(dfu_suffix_t){
-        dbg_log("Invalid DFU data blob\n");
+    if ((sizeof(firmware)/sizeof(uint8_t)) < sizeof(dfu_suffix_t))
+    {
+        printf("Invalid DFU data blob\n");
         goto end;
     }
 
 	dfu_suffix->dwCRC = (firmware[15] << 24) + (firmware[14] << 16) + (firmware[13] << 8) + firmware[12];
 
-	if (firmware[10] != 'D' || firmware[9]  != 'F' || firmware[8]  != 'U') {
-		dbg_log("No valid DFU suffix signature\n");
+	if (firmware[10] != 'D' || firmware[9]  != 'F' || firmware[8]  != 'U')
+    {
+		printf("No valid DFU suffix signature\n");
 		goto end;
 	}
 
 	dfu_suffix->bcdDFU = (firmware[7] << 8) + firmware[6];
-	dbg_log("Dfu suffix version %x\n", data->bcdDFU);
+	printf("Dfu suffix version %x\n", dfu_suffix->bcdDFU);
 
 	dfu_suffix->suffixlen = firmware[11];
-	if (data->suffixlen < sizeof(dfusuffix)) {
-		dbg_log("Unsupported DFU suffix length %i\n", dfu_suffix->suffixlen);
+	if (dfu_suffix->suffixlen < sizeof(dfu_suffix))
+    {
+		printf("Unsupported DFU suffix length %i\n", dfu_suffix->suffixlen);
 		goto end;
 	}
 
