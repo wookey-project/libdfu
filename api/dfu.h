@@ -47,7 +47,7 @@ typedef struct __packed {
 #define DFU_QUEUE_MAX_SIZE 10
 #define DFU_DATA_QUEUE_MAX_SIZE 10
 #define MAX_TRANSFERT_SIZE 64
-#define MAX_POLL_TIMEOUT 1000
+#define MAX_POLL_TIMEOUT 100
 
 
 #define USB_RQST_DFU_DETACH                0x00
@@ -132,5 +132,7 @@ void dfu_early_init(void);
 void dfu_init(void);
 
 void dfu_early_init(void);
+
+void dfu_loop(void);
 
 #endif

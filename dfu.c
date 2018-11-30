@@ -8,14 +8,19 @@
 #if 0
 #include "dummy_crypt.h"
 #include "dummy_flash.h"
-#include "stm32f4xx_timer.h"
 #include "stm32f4xx.h"
 #include "stm32f4xx_nvic.h"
-#include "stm32f4xx_timer_regs.h"
 #include "cortex_m4_systick.h"
 #endif
 #include "usb_control.h"
 #include "queue.h"
+
+//#define TIMER 0
+/* FIXME should be replaced by another way... */
+#if TIMER
+#include "stm32f4xx_timer.h"
+#include "stm32f4xx_timer_regs.h"
+#endif
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
@@ -80,7 +85,6 @@ typedef struct {
 } dfu_data_block_t;
 
 static void dfu_release_block(dfu_data_block_t *b){
-    printf("\n");
 	if(b != NULL){
         if(b->data != NULL){
 #ifdef CONFIG_STD_MALLOC_LIGHT
@@ -106,12 +110,10 @@ static inline void dfu_set_state(const dfu_state_enum_t new_state) {
 
 
 static void dfu_prepare_stall(void){
-    printf("\n");
     usb_driver_stall_out(0);
 }
 
 static void dfu_functional_desc_request_handler(uint16_t wLength){
-    printf("\n");
 
     if ( wLength <= 0 ){
         usb_driver_setup_send_status(0);
@@ -130,13 +132,11 @@ static void dfu_functional_desc_request_handler(uint16_t wLength){
 
 
 static uint8_t dfu_validate_suffix(dfu_suffix_t * dfu_suffix){
-    printf("\n");
     return 1;
 }
 
 
 static uint8_t dfu_validate_sec_suffix(dfu_sec_metadata_hdr_t * dfu_sec_metadata_hdr){
-    printf("\n");
     return 1;
 }
 
@@ -167,17 +167,19 @@ void dfu_set_poll_timeout(uint32_t t){
 
     dfu_ctx->poll_timeout_ms = t;
     sys_get_systick(&ms, PREC_MILLI);
-    dfu_ctx->poll_start = (uint32_t) ms;
+    dfu_ctx->poll_start = ms;
 
 #ifdef TIMER
     uint32_t psc = (PROD_CLOCK_APB1 * 2) / 0xFFFF;
     uint32_t counter = (t * (PROD_CLOCK_APB1 * 2)) / (1000 * psc);
 
-    timer5_set_counter(counter);
-    timer5_set_prescaler(psc);
-    timer5_set_autoreload(counter);
+    timer2_set_counter(counter);
+    timer2_set_prescaler(psc);
+    timer2_set_autoreload(counter);
 
 
+#if 0
+    // for bare metal....
     set_reg_bits(r_CORTEX_M_NVIC_IPR6,(0xF<<28)); /* See PM0214 rev 5 page 214
                                                    * TIM2_IRQn = 28
                                                    * Priority = 0xF
@@ -185,9 +187,9 @@ void dfu_set_poll_timeout(uint32_t t){
                                                    */
 
     NVIC_EnableIRQ(TIM2_IRQn);
-    timer5_enable_interrupt();
-    timer5_enable();
-    printf("dfu_ctx->poll_timeout_ms:%d, counter:%d, psc:%d\n",dfu_ctx->poll_timeout_ms, counter, psc);
+#endif
+    timer2_enable_interrupt();
+    timer2_enable();
 #endif
 
 
@@ -195,7 +197,6 @@ void dfu_set_poll_timeout(uint32_t t){
 
 
 uint32_t dfu_get_poll_timeout(void){
-    printf("dfu_ctx->poll_timeout_ms %d\n",  dfu_ctx->poll_timeout_ms);
     return dfu_ctx->poll_timeout_ms;
 }
 
@@ -206,19 +207,17 @@ static inline uint8_t dfu_get_state() {
 
 
 static inline void dfu_set_status(const dfu_status_enum_t new_status) {
-    printf("%x => %x\n", dfu_ctx->status, new_status);
     dfu_ctx->status = new_status;
 }
 
 #ifdef TIMER
 volatile uint32_t tim5_it = 0;
-void TIM2_IRQHandler(void){
+void TIM2_IRQHandler(uint8_t irq, uint32_t cr, uint32_t sr){
     tim5_it +=1;
-    timer5_disable();
-    timer5_disable_interrupt();
+    timer2_disable();
+    timer2_disable_interrupt();
     write_reg_value(r_CORTEX_M_TIM2CNT,read_reg_value(r_CORTEX_M_TIM2ARR));
     write_reg_value(r_CORTEX_M_TIM2SR,0);
-    printf("\e[91m%d\e[97m\n",tim5_it);
     if (dfu_get_state() == DFUDNBUSY){
         dfu_set_state(DFUDNLOAD_SYNC);
     }
@@ -236,7 +235,6 @@ uint8_t dfu_get_status_string_id() {
 }
 
 static inline void dfu_error(const dfu_status_enum_t new_status) {
-    printf("\n");
     if(new_status == ERRSTALLEDPKT){
         dfu_prepare_stall();
     }
@@ -248,7 +246,6 @@ static inline void dfu_error(const dfu_status_enum_t new_status) {
 
 
 void dfu_request_detach(struct usb_setup_packet *setup_packet) {
-    printf("\n");
     if( (setup_packet->wLength == 0) && (setup_packet->wValue <= dfu_ctx->detach_timeout_ms) ) {
         /* The Detach request is not meaningful in our case.
          * The DFU mode is started by after system reset depending on
@@ -263,7 +260,6 @@ void dfu_request_detach(struct usb_setup_packet *setup_packet) {
 
 
 void dfu_request_dnload(struct usb_setup_packet *setup_packet) {
-    printf("\n");
     switch(dfu_get_state()){
         case DFUDNLOAD_IDLE:
             /* fallthrough */
@@ -272,29 +268,23 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet) {
 #endif
         case DFUIDLE:
             if (dfu_fct_desc.bmAttributes.bitCanDnload != 1 ){
-                printf("dfu_fct_desc.bmAttributes.bitCanDnload != 1 - (%x)\n", dfu_get_state());
                 dfu_error(ERRUNKNOWN);
             }
 
             if( setup_packet->wLength == 0 ) { /* No data => end of transfert */
-                printf("No data => end of transfert\n");
                 dfu_ctx->data_out_nb_blocks = 0;
                 dfu_ctx->data_out_length = 0;
                 dfu_ctx->data_out_current_block_nb = 0;
                 dfu_ctx->block_in_progress = 0;
                 dfu_set_state(DFUMANIFEST_SYNC);
                 usb_driver_setup_send_status(0);
-                printf("File transfer complete.\n");
             }else if (setup_packet->wLength > MAX_TRANSFERT_SIZE) {
-                printf("setup_packet->wLength > MAX_TRANSFERT_SIZE");
                 dfu_ctx->block_in_progress = 0;
                 dfu_error(ERRSTALLEDPKT);
             }else{
                 dfu_ctx->data_out_current_block_nb;
                 dfu_ctx->data_out_nb_blocks = setup_packet->wValue;
                 dfu_ctx->data_out_length = setup_packet->wLength;
-                printf("dfu_ctx->data_out_current_block_nb: %d, setup_packet->wValue:%d, setup_packet->wLength: %d\n",
-                     dfu_ctx->data_out_current_block_nb, setup_packet->wValue, setup_packet->wLength);
                 dfu_set_state(DFUDNLOAD_SYNC); /* We have data to dl */
 
                 dfu_ctx->block_in_progress = 1;
@@ -304,7 +294,6 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet) {
             }
             break;
         default:
-            printf("Unhandled state: %x",dfu_get_state());
             dfu_error(ERRSTALLEDPKT);
     }
 
@@ -313,15 +302,11 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet) {
 
 static void dfu_data_out_handler(uint32_t size) {
 
-    printf("dfu_get_state:%x, got data block:%ld\n", dfu_get_state(), size);
-
     switch(dfu_get_state()){
         case DFUDNBUSY:
-            printf("DFUDNBUSY\n");
             dfu_error(ERRSTALLEDPKT);
             break;
-        case DFUDNLOAD_SYNC:
-            printf("DFUDNLOAD_SYNC\n");
+        case DFUDNLOAD_SYNC: {
             dfu_data_block_t *dfu_current_out_block = NULL;
 #ifdef CONFIG_STD_MALLOC_LIGHT
 	        wmalloc((void**)&dfu_current_out_block, sizeof(dfu_data_block_t), ALLOC_NORMAL);
@@ -332,9 +317,7 @@ static void dfu_data_out_handler(uint32_t size) {
 	        wmalloc((void**)&dfu_current_out_block->data, MAX_TRANSFERT_SIZE, ALLOC_NORMAL);
 #else
 	        dfu_current_out_block->data  = (uint8_t*)malloc(MAX_TRANSFERT_SIZE);
-            printf("dfu_current_out_block->data:%x\n", dfu_current_out_block->data);
 #endif
-            printf("Downloading block: #%d\n", dfu_ctx->data_out_current_block_nb);
             dfu_current_out_block->id = dfu_ctx->data_out_current_block_nb;
             dfu_current_out_block->size = size;
             memcpy(dfu_current_out_block->data, dfu_ctx->data_out_buffer, size);
@@ -343,14 +326,13 @@ static void dfu_data_out_handler(uint32_t size) {
             dfu_ctx->block_in_progress = 0;
             dfu_ctx->poll_start = 0;
             break;
+        }
         default:
-            printf("Unhandled state: %x\n",dfu_get_state());
             dfu_error(ERRSTALLEDPKT);
     }
 }
 
 void dfu_request_upload(struct usb_setup_packet *setup_packet) {
-    printf("\n");
     switch(dfu_get_state()){
         case DFUUPLOAD_IDLE:
             /* fallthrough */
@@ -359,32 +341,25 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet) {
 #endif
         case DFUIDLE:
             if (dfu_fct_desc.bmAttributes.bitCanUpload != 1 ){
-                printf("dfu_fct_desc.bmAttributes.bitCanUpload != 1 - (%x)\n", dfu_get_state());
                 dfu_error(ERRUNKNOWN);
             }
 
             if( setup_packet->wLength == 0 ) { /* No data => end of transfert */
-                printf("No data => end of transfert\n");
                 dfu_ctx->data_in_nb_blocks = 0;
                 dfu_ctx->data_in_length = 0;
                 dfu_ctx->data_in_current_block_nb = 0;
                 dfu_ctx->block_in_progress = 0;
                 dfu_set_state(DFUIDLE);
                 usb_driver_setup_send_status(0);
-                printf("data transfer complete.\n");
             }else if (setup_packet->wLength > MAX_TRANSFERT_SIZE) {
-                printf("setup_packet->wLength > MAX_TRANSFERT_SIZE");
                 dfu_error(ERRSTALLEDPKT);
             }else{
-                printf("dfu_ctx->data_in_current_block_nb: %d, setup_packet->wValue:%d, setup_packet->wLength: %d\n",
-                     dfu_ctx->data_in_current_block_nb, setup_packet->wValue, setup_packet->wLength);
 
                 //FIXME
                 read_firmware_data_cmd = 1;
             }
             break;
         default:
-            printf("Unhandled state: %x",dfu_get_state());
             dfu_error(ERRSTALLEDPKT);
     }
 }
@@ -393,7 +368,6 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet) {
     if( (setup_packet->wValue == 0) && (setup_packet->wLength == 6) ) {
         switch( dfu_get_state() ) {
 	        case DFUDNLOAD_SYNC:
-                printf("DFUDNLOAD_SYNC: block_in_progress: %d\n",dfu_ctx->block_in_progress);
                 if ((dfu_ctx->block_in_progress == 1) || (queue_available_space(dfu_data_out_queue) == 0)){
                     dfu_set_poll_timeout(MAX_POLL_TIMEOUT);
                     dfu_set_state(DFUDNBUSY);      /* Block transfert still in progress */
@@ -403,12 +377,11 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet) {
                 break;
 
             case DFUMANIFEST_SYNC:
-                printf("DFUMANIFEST_SYNC: block_in_progress: %d\n",dfu_ctx->block_in_progress);
                 dfu_set_state(DFUIDLE);
                 break;
 
             default:
-                printf("DEFAULT: block_in_progress: %d\n",dfu_ctx->block_in_progress);
+                break;
         }
 
         char data[6];
@@ -426,7 +399,6 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet) {
         }
 	    /* END FIXME */
 #endif
-        printf("dfu state: %d, dfu status: %d\n",data[4],data[0]);
         usb_driver_setup_send(data, sizeof(data),0);
         usb_driver_setup_read_status();
 
@@ -436,7 +408,6 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet) {
 }
 
 void dfu_request_clrstatus(struct usb_setup_packet *setup_packet) {
-    printf("\n");
     if( (setup_packet->wValue == 0) && (setup_packet->wLength == 0) ) {
         if( dfu_get_state() == DFUERROR ) {
             dfu_init_context();
@@ -465,7 +436,6 @@ void dfu_request_getstate(struct usb_setup_packet *setup_packet) {
 }
 
 void dfu_request_abort(struct usb_setup_packet *setup_packet) {
-    printf("\n");
     if( (setup_packet->wValue == 0) && (setup_packet->wLength == 0) ) {
         if( dfu_get_state() != DFUERROR ) {
             dfu_set_state(DFUIDLE);
@@ -488,7 +458,6 @@ static void dfu_class_request_handler(struct usb_setup_packet *setup_packet){
         if (((now - dfu_ctx->poll_start ) >= dfu_ctx->poll_timeout_ms)){
         //printf("DNLOAD TIMEOUT block_in_progress: %d, tick: %lld dfu_ctx->poll_start+tick: %lld => Stalling\n",dfu_ctx->block_in_progress, now, dfu_ctx->poll_start + now);
             dfu_set_state(DFUDNLOAD_SYNC);
-            printf("\e[93mDNLOAD TIMEOUT\e[39m\n");
         }else{
             dfu_error(ERRSTALLEDPKT);
             return;
@@ -535,14 +504,12 @@ static void dfu_class_request_handler(struct usb_setup_packet *setup_packet){
 #endif
         default:
             dfu_error(ERRUNKNOWN);
-            printf("Unhandled DFU request\n");
     }
 }
 
 
 
 static void dfu_data_in_handler(void) {
-    printf("bytes sent\n");
     if (dfu_ctx->block_in_progress == 1){
         dfu_ctx->block_in_progress = 0;
     }
@@ -551,6 +518,9 @@ static void dfu_data_in_handler(void) {
 void dfu_early_init(void)
 {
 	usb_driver_early_init(dfu_data_out_handler, dfu_data_in_handler);
+#if TIMER
+    timer2_early_init();
+#endif
 }
 
 
@@ -579,7 +549,7 @@ void dfu_init(void)
 	usb_driver_init();
     dfu_init_context();
 #ifdef TIMER
-    timer5_init_master(TIMER25_PRESCALER_2_TCKINT,
+    timer2_init_master(TIMER25_PRESCALER_2_TCKINT,
                        TIMER25_AUTO_RELOAD_ENABLE,
                        TIMER25_CMS_MODE_1,
                        TIMER25_DIR_DOWN,
@@ -588,14 +558,14 @@ void dfu_init(void)
                        TIMER25_UPDATE_ENABLE);
 
 #endif
-    printf("Done\n");
 }
 
 
 int j = 0;
 
 
-void dfu_loop(void){
+void dfu_loop(void)
+{
 
     /* FIXME MOCKUP */
     if (read_firmware_data_cmd == 1){
@@ -614,7 +584,7 @@ void dfu_loop(void){
 	            wmalloc((void**)& dfu_new_tmp_in_block->data, MAX_TRANSFERT_SIZE, ALLOC_NORMAL);
 #else
     	        dfu_new_tmp_in_block->data  = (uint8_t *)malloc(MAX_TRANSFERT_SIZE);
-                printf("dfu_new_tmp_in_block->data: %x\n",dfu_new_tmp_in_block->data);
+                printf("data: %x\n",dfu_new_tmp_in_block->data);
 #endif
                 memset((void *)dfu_new_tmp_in_block->data, j, MAX_TRANSFERT_SIZE);
 
@@ -649,8 +619,13 @@ void dfu_loop(void){
         // TODO write data to the flash
 
         if( dfu_validate_memory_policy(dfu_ctx->flash_address, dfu_current_out_block->size) ) {
-            printf("dfu_validate_memory_policy => OK\n");
-            printf("Writing block: #%d\n", dfu_current_out_block->id);
+//            printf("dfu_validate_memory_policy => OK\n");
+//            printf("Writing block: #%d, size %d\n", dfu_current_out_block->id, dfu_current_out_block->size);
+
+            // write simulation...
+//            printf("Writing block: OK\n");
+            dfu_ctx->flash_address += dfu_current_out_block->size;
+            dfu_release_block(dfu_current_out_block);
 #if 0
             FLASH WRITE HERE...
             if( flash_write(dfu_ctx->flash_address, dfu_current_out_block->data, dfu_current_out_block->size) ) {
