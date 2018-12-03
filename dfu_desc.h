@@ -58,7 +58,7 @@ const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
     	.bmAttributes.self_powered = 0,
     	.bmAttributes.remote_wakeup = 0,
     	.bmAttributes.reserved = 0,
-    	.bMaxPower = 500,
+    	.bMaxPower = 0xFA, /* 0xFA = 500mA */
     },
 	.interface_desc = {
     	.bLength = sizeof(usb_ctrl_interface_descriptor_t),

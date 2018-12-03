@@ -16,11 +16,6 @@
 #include "queue.h"
 
 //#define TIMER 0
-/* FIXME should be replaced by another way... */
-#if TIMER
-#include "stm32f4xx_timer.h"
-#include "stm32f4xx_timer_regs.h"
-#endif
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
@@ -131,17 +126,21 @@ static void dfu_functional_desc_request_handler(uint16_t wLength){
 }
 
 
-static uint8_t dfu_validate_suffix(dfu_suffix_t * dfu_suffix){
+static uint8_t dfu_validate_suffix(dfu_suffix_t * dfu_suffix __attribute__((unused)))
+{
     return 1;
 }
 
 
-static uint8_t dfu_validate_sec_suffix(dfu_sec_metadata_hdr_t * dfu_sec_metadata_hdr){
+static uint8_t dfu_validate_sec_suffix(dfu_sec_metadata_hdr_t * dfu_sec_metadata_hdr __attribute__((unused)))
+{
     return 1;
 }
 
 
-static uint8_t dfu_validate_memory_policy(uint32_t addr, uint32_t length){
+static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
+                                          uint32_t length __attribute__((unused)))
+{
     //printf("\n");
     return 1;
 }
@@ -282,7 +281,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet) {
                 dfu_ctx->block_in_progress = 0;
                 dfu_error(ERRSTALLEDPKT);
             }else{
-                dfu_ctx->data_out_current_block_nb;
+                /* dfu_ctx->data_out_current_block_nb; FIXME: this should be set to something */
                 dfu_ctx->data_out_nb_blocks = setup_packet->wValue;
                 dfu_ctx->data_out_length = setup_packet->wLength;
                 dfu_set_state(DFUDNLOAD_SYNC); /* We have data to dl */
@@ -657,8 +656,7 @@ void dfu_loop(void)
     // FIXME
     if (read_firmware_data_done == 1){
         read_firmware_data_done = 0;
-        // FIXME: no zlp API ??
-        //usb_fs_driver_prepare_send_zlp(0);
+        usb_driver_setup_send_zlp(0);
         usb_driver_setup_read_status();
     }
 
