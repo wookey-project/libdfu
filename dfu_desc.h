@@ -83,8 +83,9 @@ const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
 	/* 1 second timeout */
 	.wDetachTimeOut = 1000,
 	/* Big transfer size chunks */
-	.wTransferSize = 16384,
-	.bcdDFUVersion = 1, 
+	.wTransferSize = 4096,
+	/* DFU 1.1 */
+	.bcdDFUVersion = 0x0110, 
     },
 };
 
