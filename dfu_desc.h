@@ -71,7 +71,21 @@ const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
     	.bInterfaceProtocol = USB_PROTOCOL_DFU_DFU,
     	.iInterface = 1,
     },
-    // FIXME ADD FUCNTIONAL DESC ?
+    /* DFU functional descriptor */
+    .func = {
+        .bLength = sizeof(usb_functional_descriptor_t),
+        .bDescriptorType = USB_DESC_FUNCT,
+        .bmAttributes.reserved = 0,
+	.bmAttributes.bitWillDetach = 0,
+	.bmAttributes.bitManifestationTolerant = 0,
+	.bmAttributes.bitCanUpload = 1,
+	.bmAttributes.bitCanDnload = 1,
+	/* 1 second timeout */
+	.wDetachTimeOut = 1000,
+	/* Big transfer size chunks */
+	.wTransferSize = 16384,
+	.bcdDFUVersion = 1, 
+    },
 };
 
 #endif /* !_DFU_DESC_H */
