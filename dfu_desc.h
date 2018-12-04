@@ -50,7 +50,7 @@ const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
 	.config_desc = {
     	.bLength = sizeof(usb_ctrl_configuration_descriptor_t),
     	.bDescriptorType = USB_DESC_CONFIG,
-    	.wTotalLength = 18, // XXX DFU is only using EP0 we do not need to include others endpoints definition
+    	.wTotalLength = 27, // XXX DFU is only using EP0 we do not need to include others endpoints definition
         .bNumInterfaces = USB_NB_INTERFACE,
     	.bConfigurationValue = 1,
     	.iConfiguration = 0,
@@ -72,7 +72,7 @@ const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
     	.iInterface = 1,
     },
     /* DFU functional descriptor */
-    .func = {
+    .functional_desc = {
         .bLength = sizeof(usb_functional_descriptor_t),
         .bDescriptorType = USB_DESC_FUNCT,
         .bmAttributes.reserved = 0,
@@ -83,7 +83,7 @@ const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
 	/* 1 second timeout */
 	.wDetachTimeOut = 1000,
 	/* Big transfer size chunks */
-	.wTransferSize = 4096,
+	.wTransferSize = 2048,
 	/* DFU 1.1 */
 	.bcdDFUVersion = 0x0110, 
     },

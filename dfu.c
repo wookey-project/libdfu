@@ -63,8 +63,8 @@ static volatile const dfu_functional_descriptor_t dfu_fct_desc = {
 
 //#define NOT_TIMER5
 
-static volatile uint8_t data_out_buffer[MAX_TRANSFERT_SIZE];
 static volatile uint8_t data_in_buffer[MAX_TRANSFERT_SIZE];
+static volatile uint8_t data_out_buffer[MAX_TRANSFERT_SIZE];
 
 static volatile dfu_context_t dfu_context = {0};
 
@@ -108,10 +108,11 @@ static void dfu_release_block(dfu_data_block_t *b)
         if(b->data != NULL){
 #ifdef CONFIG_STD_MALLOC_LIGHT
             enter_critical_section();
-		    wfree((void**)&b->data);
+            wfree((void**)&b->data);
             leave_critical_section();
 #endif
         }
+
 #ifdef CONFIG_STD_MALLOC_LIGHT
         enter_critical_section();
         wfree((void**)&b);
@@ -136,7 +137,8 @@ static void dfu_prepare_stall(void)
 
 static void dfu_functional_desc_request_handler(uint16_t wLength)
 {
-    if ( wLength <= 0 ){
+    //aprintf("functional desc requested, wlength=%d\n", wLength);
+    if ( wLength == 0 ){
         usb_driver_setup_send_status(0);
         usb_driver_setup_read_status();
         return;
@@ -266,7 +268,7 @@ uint8_t dfu_get_status_string_id() {
 }
 
 static inline void dfu_error(const dfu_status_enum_t new_status) {
-    aprintf("%s: status=%d", __func__, new_status);
+    aprintf("%s: status=%d\n", __func__, new_status);
     if(new_status == ERRSTALLEDPKT){
         aprintf("stalling...\n");
         dfu_prepare_stall();
@@ -325,8 +327,8 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet) {
 
                     dfu_ctx->block_in_progress = 1;
                     usb_driver_setup_send_status(0);
+                    aprintf("read %dB\n", dfu_ctx->block_size);
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
-
                 }
                 break;
             }
@@ -341,29 +343,36 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet) {
 
 static void dfu_data_out_handler(uint32_t size) {
 
+    //aprintf("%s\n",__func__);
     switch(dfu_get_state()){
         case DFUDNBUSY: {
             aprintf("dfu error: dfunbusy !\n");
             dfu_error(ERRSTALLEDPKT);
             break;
         }
-        case DFUDNLOAD_SYNC: {
+        case DFUDNLOAD_SYNC:
+            {
+            aprintf("queue %d\n", size);
+#if 0
             dfu_data_block_t *dfu_current_out_block = NULL;
 #ifdef CONFIG_STD_MALLOC_LIGHT
 	        wmalloc((void**)&dfu_current_out_block, sizeof(dfu_data_block_t), ALLOC_NORMAL);
-#endif
-#ifdef CONFIG_STD_MALLOC_LIGHT
-	        wmalloc((void**)&dfu_current_out_block->data, MAX_TRANSFERT_SIZE, ALLOC_NORMAL);
+            wmalloc((void**)&dfu_current_out_block->data, MAX_CTRL_PACKET_SIZE, ALLOC_NORMAL);
 #endif
             dfu_current_out_block->id = dfu_ctx->data_out_current_block_nb;
             dfu_current_out_block->size = size;
+            
             memcpy(dfu_current_out_block->data, dfu_ctx->data_out_buffer, size);
             queue_enqueue(dfu_data_out_queue, dfu_current_out_block);
+#endif
             dfu_ctx->data_out_current_block_nb += 1;
             dfu_ctx->block_in_progress = 0;
             dfu_ctx->poll_start = 0;
             break;
         }
+        case DFUDNLOAD_IDLE:
+            /* waiting for DNLOAD req */
+            break;
         default:
             aprintf("dfu error: stalled packet\n");
             dfu_error(ERRSTALLEDPKT);
@@ -419,6 +428,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                     dfu_set_poll_timeout(MAX_POLL_TIMEOUT);
                     dfu_set_state(DFUDNBUSY);      /* Block transfert still in progress */
                 }else{
+                    //aprintf("->DNLOAD_IDLE\n");
                     dfu_set_state(DFUDNLOAD_IDLE); /* Block transgert complete */
                 }
                 break;
@@ -509,10 +519,11 @@ void dfu_request_abort(struct usb_setup_packet *setup_packet) {
 
 static void dfu_class_request_handler(struct usb_setup_packet *setup_packet)
 {
-    aprintf("=> state is %d, requesting %d\n", dfu_get_state(), setup_packet->bRequest);
+    aprintf("=> state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
     uint64_t now = 0;
     sys_get_systick(&now, PREC_MILLI);
-    if (dfu_get_state() == DFUDNBUSY){
+    if (dfu_get_state() == DFUDNBUSY)
+    {
 
         if (((now - dfu_ctx->poll_start ) >= dfu_ctx->poll_timeout_ms))
         {
@@ -523,37 +534,50 @@ static void dfu_class_request_handler(struct usb_setup_packet *setup_packet)
                     dfu_ctx->poll_timeout_ms);
             dfu_set_state(DFUDNLOAD_SYNC);
         } else {
-            dfu_error(ERRSTALLEDPKT);
-            return;
+            aprintf("###\n");
+            /* Should not be awoken before BUSY timeout... */
+            dfu_set_state(DFUERROR);
         }
+    }
+    if (dfu_get_state() == DFUDNLOAD_SYNC && setup_packet->bRequest == USB_RQST_DFU_GET_STATUS) {
+            aprintf("@@@\n");
+            dfu_ctx->block_in_progress = 0;
+            dfu_set_state(DFUDNLOAD_IDLE);
     }
     //printf("tick: %lld dfu_ctx->poll_start+tick: %lld\n", now, dfu_ctx->poll_start + now);
     switch( setup_packet->bRequest ) {
         case USB_RQST_DFU_DETACH:
+            aprintf("DFU_DETACH\n");
             dfu_request_detach(setup_packet);
             break;
 
         case USB_RQST_DFU_DNLOAD:
+            aprintf("DFU_DNLOAD\n");
             dfu_request_dnload(setup_packet);
             break;
 
         case USB_RQST_DFU_UPLOAD:
+            aprintf("DFU_UPLOAD\n");
             dfu_request_upload(setup_packet);
             break;
 
         case USB_RQST_DFU_GET_STATUS:
+            aprintf("DFU_GET_STATUS\n");
             dfu_request_getstatus(setup_packet);
             break;
 
         case USB_RQST_DFU_CLEAR_STATUS:
+            aprintf("DFU_CLEAR_STATUS\n");
             dfu_request_clrstatus(setup_packet);
             break;
 
         case USB_RQST_DFU_GET_STATE:
+            aprintf("DFU_GET_STATE\n");
             dfu_request_getstate(setup_packet);
             break;
 
         case USB_RQST_DFU_ABORT:
+            aprintf("DFU_GET_ABORT\n");
             dfu_request_abort(setup_packet);
             break;
 
@@ -628,7 +652,6 @@ void dfu_init(void)
 
 int j = 0;
 
-
 void dfu_loop(void)
 {
 
@@ -636,7 +659,7 @@ void dfu_loop(void)
     aprintf_flush();
     if (read_firmware_data_cmd == 1){
         printf("Reading flash data\n");
-        if(j < 20){
+        if(j < 20) {
             if (queue_available_space(dfu_data_out_queue) > 0){
 
                 dfu_data_block_t *dfu_new_tmp_in_block = NULL;
@@ -655,7 +678,7 @@ void dfu_loop(void)
                 queue_enqueue(dfu_data_in_queue, dfu_new_tmp_in_block);
                 j+=1;
 
-            }else{
+            } else {
                 printf("dfu_data_in_queue is full, waiting for space ...\n");
             }
         }else{
@@ -664,6 +687,7 @@ void dfu_loop(void)
             printf("Reading flash data: DONE\n");
         }
     }
+    aprintf_flush();
     /* FIXME END */
 
 	if(!queue_is_empty(dfu_data_out_queue)){
@@ -672,7 +696,7 @@ void dfu_loop(void)
         // FIXME, queue API and associated critical section support should be
         // ported to libstd
         enter_critical_section();
-        dfu_current_out_block = queue_dequeue(dfu_data_out_queue);
+        //dfu_current_out_block = queue_dequeue(dfu_data_out_queue);
         leave_critical_section();
 
         // TODO check the DFU suffix
@@ -690,7 +714,7 @@ void dfu_loop(void)
             // write simulation...
 //            printf("Writing block: OK\n");
             dfu_ctx->flash_address += dfu_current_out_block->size;
-            dfu_release_block(dfu_current_out_block);
+            //dfu_release_block(dfu_current_out_block);
 #if 0
             FLASH WRITE HERE...
             if( flash_write(dfu_ctx->flash_address, dfu_current_out_block->data, dfu_current_out_block->size) ) {
@@ -710,6 +734,7 @@ void dfu_loop(void)
         }
     }
 
+    aprintf_flush();
     if(!queue_is_empty(dfu_data_in_queue)){
         dfu_data_block_t *dfu_tmp_in_block = NULL;
         enter_critical_section();
