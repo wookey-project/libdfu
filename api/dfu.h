@@ -8,6 +8,8 @@
 /* usb driver control header */
 #include "usb_control.h"
 
+#define MAX_DFU_CMD_QUEUE_SIZE 8
+
 
 typedef struct __packed dfu_functional_descriptor {
 	uint8_t bLength;
@@ -49,13 +51,15 @@ typedef struct __packed {
 #define MAX_TRANSFERT_SIZE 2048
 #define MAX_POLL_TIMEOUT 100
 
-#define USB_RQST_DFU_DETACH                0x00
-#define USB_RQST_DFU_DNLOAD                0x01
-#define USB_RQST_DFU_UPLOAD                0x02
-#define USB_RQST_DFU_GET_STATUS            0x03
-#define USB_RQST_DFU_CLEAR_STATUS          0x04
-#define USB_RQST_DFU_GET_STATE             0x05
-#define USB_RQST_DFU_ABORT                 0x06
+typedef enum dfu_request {
+ USB_RQST_DFU_DETACH             =  0x00,
+ USB_RQST_DFU_DNLOAD             =  0x01,
+ USB_RQST_DFU_UPLOAD             =  0x02,
+ USB_RQST_DFU_GET_STATUS         =  0x03,
+ USB_RQST_DFU_CLEAR_STATUS       =  0x04,
+ USB_RQST_DFU_GET_STATE          =  0x05,
+ USB_RQST_DFU_ABORT              =  0x06
+} dfu_request_t;
 
 #define USB_RQST_DFU_DEBUG_CHKSIGN               0xF0
 #define USB_RQST_DFU_DEBUG_DECRYPT               0xF1
@@ -102,8 +106,16 @@ typedef enum dfu_state_enum {
 }dfu_state_enum_t;
 
 
+typedef struct __packed {
+    uint8_t bStatus;
+    uint8_t bwPollTimeout[3];
+    uint8_t bState;
+    uint8_t iString;
+} device_dfu_status_t;
+
 typedef struct  {
     uint8_t block_in_progress;
+    uint8_t session_in_progress;
     dfu_state_enum_t state;
     dfu_status_enum_t status;
     int8_t data_out_nb_blocks;
@@ -121,6 +133,7 @@ typedef struct  {
     uint8_t ** data_in_buffer;
     uint16_t data_out_current_block_nb;
     uint16_t data_in_current_block_nb;
+    uint32_t current_block_offset;
     //uint32_t data_out_buffer_index;
     //uint32_t data_in_buffer_index;
 
@@ -133,5 +146,7 @@ void dfu_init(void);
 void dfu_early_init(void);
 
 void dfu_loop(void);
+
+void dfu_init_context(void);
 
 #endif
