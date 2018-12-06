@@ -19,10 +19,12 @@
  * \brief Device descriptor
  *
  * The device descriptor of a USB device represents the entire device.
- * An USB device can only have one device descriptor. It specifies information about the device such as:
+ * An USB device can only have one device descriptor. It specifies information
+ * about the device such as:
  *    - the supported USB version,
  *    - maximum packet size,
- *    - vendor and product IDs and the number of possible configurations the device can have.
+ *    - vendor and product IDs and the number of possible configurations the
+ *      device can have.
  * The format of the device descriptor is defined below.
  */
 const usb_ctrl_device_descriptor_t dfu_device_desc = {

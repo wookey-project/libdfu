@@ -33,6 +33,8 @@ typedef struct dfu_request_transition {
     uint8_t    target_state;
 } dfu_request_transition_t;
 
+volatile bool ready_for_data_receive = true;
+
 /*
  * all allowed transitions and target states for each current state
  * empty fields are set as 0xff/0xff for request/state couple, which is
@@ -445,7 +447,10 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->session_in_progress = 1;
 #if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
+//                    printf("data_out_buffer is %x\n", dfu_ctx->data_out_buffer);
 #endif
+                    ready_for_data_receive = false;
+                    memset(dfu_ctx->data_out_buffer, 0, MAX_TRANSFERT_SIZE);
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
                 }
                 /* This is a new download session (i.e. new file) */
@@ -479,6 +484,9 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->block_size = setup_packet->wLength;
 #if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
+                    ready_for_data_receive = false;
+                    memset(dfu_ctx->data_out_buffer, 0, MAX_TRANSFERT_SIZE);
+//                    printf("data_out_buffer is %x\n", dfu_ctx->data_out_buffer);
 #endif
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
                 }
@@ -879,6 +887,12 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
         dfu_error(ERRUNKNOWN);
         return;
     }
+    if (setup_packet->bRequest == USB_RQST_DFU_DNLOAD) {
+        if (setup_packet->wLength > 0) {
+            // locking right now the state of 'block in progress'
+            dfu_ctx->block_in_progress = 1;
+        }
+    }
 
 #if USB_DFU_DEBUG
     aprintf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
@@ -996,17 +1010,23 @@ static void dfu_store_data(void)
 #if USB_DFU_DEBUG
     printf("storing data...\n");
 #endif
-    if (dfu_get_state() != DFUDNBUSY) {
+    if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
         printf("Error! storing data in %d mode !", dfu_get_state());
+        dfu_ctx->data_out_current_block_nb += 1;
+        dfu_ctx->block_in_progress = 0;
+        dfu_ctx->poll_start = 0;
+        dfu_set_poll_timeout(0);
+        dfu_data_to_store = 0;
         dfu_error(ERRUNKNOWN);
         return;
     }
     // FIXME: simulate the IPCs and write access by now...
-
+    sys_sleep(10, SLEEP_MODE_INTERRUPTIBLE);
     // now set the write action as done
     dfu_ctx->data_out_current_block_nb += 1;
     dfu_ctx->block_in_progress = 0;
     dfu_ctx->poll_start = 0;
+    dfu_set_poll_timeout(0);
     dfu_data_to_store = 0;
     /* INFO: we consider that even if the poll timeout is not finished, we go
      * back to DNLOAD_SYNC state
@@ -1016,6 +1036,8 @@ static void dfu_store_data(void)
     dfu_set_state(DFUDNLOAD_SYNC);
     return;
 }
+
+volatile int cur_size = 0;
 
 
 static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
@@ -1029,7 +1051,12 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
      * buffer content into the flash. When this is done, the flag is
      * lowered and the block_in_pogress field of the dfu context is set to 0.
      */
-    dfu_data_to_store = 1;
+    cur_size += size;
+    if (cur_size == dfu_ctx->data_out_length) {
+        dfu_data_to_store = 1;
+        ready_for_data_receive = true;
+        cur_size = 0;
+    }
 }
 
 
