@@ -15,7 +15,7 @@
 #include "usb_control.h"
 #include "queue.h"
 
-//#define TIMER 0
+#define USB_DFU_DEBUG 1
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
@@ -205,8 +205,7 @@ static volatile const dfu_functional_descriptor_t dfu_fct_desc = {
 
 //#define NOT_TIMER5
 
-static volatile uint8_t data_in_buffer[MAX_TRANSFERT_SIZE];
-static volatile uint8_t data_out_buffer[MAX_TRANSFERT_SIZE];
+static volatile uint8_t data_buffer[MAX_TRANSFERT_SIZE];
 
 static volatile dfu_context_t dfu_context = {0};
 
@@ -214,9 +213,6 @@ static volatile dfu_context_t dfu_context = {0};
 
 
 static volatile dfu_context_t * const dfu_ctx = &dfu_context;
-
-struct queue *dfu_data_in_queue = NULL;
-struct queue *dfu_data_out_queue = NULL;
 
 
 typedef struct {
@@ -273,14 +269,20 @@ static void dfu_prepare_stall(void)
 
 static inline void dfu_error(const dfu_status_enum_t new_status)
 {
+#if USB_DFU_DEBUG
     printf("%s: status=%d\n", __func__, new_status);
+#endif
     if(new_status == ERRSTALLEDPKT){
+#if USB_DFU_DEBUG
         printf("stalling...\n");
+#endif
         dfu_prepare_stall();
         dfu_set_status(new_status);
         return;
     }
+#if USB_DFU_DEBUG
     printf("state -> Error\n");
+#endif
     dfu_set_status(new_status);
 }
 
@@ -355,7 +357,9 @@ void dfu_set_poll_timeout(uint32_t t)
     uint64_t ms;
     uint8_t ret;
 
+#if USB_DFU_DEBUG
     printf("setting poll_timeout_ms to %d\n", t);
+#endif
     dfu_ctx->poll_timeout_ms = t;
     ret = sys_get_systick(&ms, PREC_MILLI);
     if (ret != SYS_E_DONE) {
@@ -439,7 +443,9 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     dfu_ctx->session_in_progress = 1;
+#if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
+#endif
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
                 }
                 /* This is a new download session (i.e. new file) */
@@ -471,7 +477,9 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->block_in_progress = 1;
                     usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
+#if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
+#endif
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
                 }
                 break;
@@ -822,6 +830,7 @@ typedef struct {
     struct usb_setup_packet  setup_packet;
 } request_queue_node_t;
 
+#if USB_DFU_DEBUG
 static const char *request_name[] = {
     "USB_RQST_DFU_DETACH",
     "USB_RQST_DFU_DNLOAD",
@@ -831,6 +840,7 @@ static const char *request_name[] = {
     "USB_RQST_DFU_GET_STATE",
     "USB_RQST_DFU_ABORT"
 };
+#endif
 
 static volatile  request_queue_node_t *current_dfu_cmd = NULL;
 struct queue *dfu_cmd_queue = NULL;
@@ -863,19 +873,25 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     request_queue_node_t *cur_req = 0;
 
     if (setup_packet->bRequest > USB_RQST_DFU_ABORT) {
+#if USB_DFU_DEBUG
         aprintf("dfu: %s: unknown request\n", __func__);
+#endif
         dfu_error(ERRUNKNOWN);
         return;
     }
 
-    aprintf("=> state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
+#if USB_DFU_DEBUG
+    aprintf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
+#endif
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
     if(ret){
         aprintf("Error while allocating queue !!!\n");
         while(1){};
     }
 
+#if USB_DFU_DEBUG
     aprintf("req: %s\n", request_name[setup_packet->bRequest]);
+#endif
     cur_req->request = setup_packet->bRequest;
     memcpy((void*)&cur_req->setup_packet, setup_packet, sizeof(struct usb_setup_packet));
     queue_enqueue(dfu_cmd_queue, cur_req);
@@ -900,40 +916,56 @@ static void dfu_class_execute_request(void)
         dfu_cmd_queue_empty = 1;
     }
     leave_critical_section();
-
+#if USB_DFU_DEBUG
+    printf("[main thread] DEQUEUING\n");
+#endif
     switch( current_dfu_cmd->setup_packet.bRequest ) {
         case USB_RQST_DFU_DETACH:
+#if USB_DFU_DEBUG
             printf("DFU_DETACH\n");
+#endif
             dfu_request_detach((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
         case USB_RQST_DFU_DNLOAD:
+#if USB_DFU_DEBUG
             printf("DFU_DNLOAD\n");
+#endif
             dfu_request_dnload((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
         case USB_RQST_DFU_UPLOAD:
+#if USB_DFU_DEBUG
             printf("DFU_UPLOAD\n");
+#endif
             dfu_request_upload((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
         case USB_RQST_DFU_GET_STATUS:
+#if USB_DFU_DEBUG
             printf("DFU_GET_STATUS\n");
+#endif
             dfu_request_getstatus((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
         case USB_RQST_DFU_CLEAR_STATUS:
+#if USB_DFU_DEBUG
             printf("DFU_CLEAR_STATUS\n");
+#endif
             dfu_request_clrstatus((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
         case USB_RQST_DFU_GET_STATE:
+#if USB_DFU_DEBUG
             printf("DFU_GET_STATE\n");
+#endif
             dfu_request_getstate((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
         case USB_RQST_DFU_ABORT:
+#if USB_DFU_DEBUG
             printf("DFU_GET_ABORT\n");
+#endif
             dfu_request_abort((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
@@ -961,7 +993,9 @@ static void dfu_class_execute_request(void)
  */
 static void dfu_store_data(void)
 {
+#if USB_DFU_DEBUG
     printf("storing data...\n");
+#endif
     if (dfu_get_state() != DFUDNBUSY) {
         printf("Error! storing data in %d mode !", dfu_get_state());
         dfu_error(ERRUNKNOWN);
@@ -986,7 +1020,9 @@ static void dfu_store_data(void)
 
 static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
 {
+#if USB_DFU_DEBUG
     aprintf("end of USB read\n");
+#endif
     /* all data received from host. This handler is executed by the lower
      * USB stack at the end of the effective usb_status_read() call.
      * Here, we set a flag to request the main thread to effetively copy the
@@ -1012,15 +1048,23 @@ static void dfu_data_in_handler(void)
 
 void dfu_loop(void)
 {
-    aprintf_flush();
-    /* storing data and go out of DNBUSY bottom half */
-    if (dfu_data_to_store) {
-        dfu_store_data();
+    while(1){
+#if USB_DFU_DEBUG
+	    aprintf_flush();
+#endif
+	    /* storing data and go out of DNBUSY bottom half */
+	    if (dfu_data_to_store) {
+        	dfu_store_data();
+	    }
+#if USB_DFU_DEBUG
+	    aprintf_flush();
+#endif
+	    /* all DFU automaton execution */
+	    dfu_class_execute_request();
+#if USB_DFU_DEBUG
+	    aprintf_flush();
+#endif
     }
-    aprintf_flush();
-    /* all DFU automaton execution */
-    dfu_class_execute_request();
-    aprintf_flush();
 }
 
 
@@ -1034,11 +1078,11 @@ void dfu_init_context(void)
     dfu_context.session_in_progress = 0;
     dfu_context.status = OK;
     dfu_context.state = DFUIDLE;
-    dfu_context.data_out_buffer = (uint8_t**)&data_out_buffer;
+    dfu_context.data_out_buffer = (uint8_t**)&data_buffer;
     dfu_context.data_out_current_block_nb = 0;
     dfu_context.data_out_nb_blocks = 0;
     dfu_context.data_out_length = 0;
-    dfu_context.data_in_buffer = (uint8_t**)&data_in_buffer;
+    dfu_context.data_in_buffer = (uint8_t**)&data_buffer;
     dfu_context.data_in_nb_blocks = 0;
     dfu_context.data_in_current_block_nb = 0;
     dfu_context.data_in_length = 0;
@@ -1070,8 +1114,6 @@ void dfu_init(void)
     //wmalloc(DFU_DATA_QUEUE_MAX_SIZE*sizeof(uint8_t), ALLOC_NORMAL);
     //	wmalloc_init(heap_base, DFU_DATA_QUEUE_MAX_SIZE);
 #endif
-    dfu_data_in_queue = queue_create(DFU_DATA_QUEUE_MAX_SIZE);
-    dfu_data_out_queue = queue_create(DFU_DATA_QUEUE_MAX_SIZE);
 
     printf("Initializing DFU Layer\n");
     usb_ctrl_callbacks_t dfu_usb_ctrl_callbacks = { // FIXME Replace handler pointers
