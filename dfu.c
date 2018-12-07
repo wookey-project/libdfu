@@ -259,7 +259,7 @@ static inline void dfu_set_state(const uint8_t new_state)
         while (1) {};
         return;
     }
-    //    printf("%x => %x\n", dfu_ctx->state, new_state);
+    printf("state: %x => %x\n", dfu_ctx->state, new_state);
     dfu_ctx->state = new_state;
 }
 
@@ -373,6 +373,48 @@ void dfu_set_poll_timeout(uint32_t t)
 
 
 /**********************************************
+ * Storing data handler
+ *********************************************/
+
+static volatile bool dfu_data_to_store = 0;
+
+/*
+ * The USB content as been read into local buffer and is waiting to be stored
+ * into the flash. This function does this
+ */
+static void dfu_store_data(void)
+{
+#if USB_DFU_DEBUG
+    printf("storing data...\n");
+#endif
+    if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
+        printf("Error! storing data in %d mode !", dfu_get_state());
+        dfu_ctx->data_out_current_block_nb += 1;
+        dfu_ctx->block_in_progress = 0;
+        dfu_ctx->poll_start = 0;
+        dfu_set_poll_timeout(0);
+        dfu_data_to_store = 0;
+        dfu_error(ERRUNKNOWN);
+        return;
+    }
+    // FIXME: simulate the IPCs and write access by now...
+    sys_sleep(10, SLEEP_MODE_INTERRUPTIBLE);
+    // now set the write action as done
+    dfu_ctx->data_out_current_block_nb += 1;
+    dfu_ctx->block_in_progress = 0;
+    dfu_ctx->poll_start = 0;
+    dfu_set_poll_timeout(0);
+    dfu_data_to_store = 0;
+    /* INFO: we consider that even if the poll timeout is not finished, we go
+     * back to DNLOAD_SYNC state
+     * FIXME: if we want to be paranoid, we should effecively wait for the
+     * residual timeout before changing current state
+     */
+    dfu_set_state(DFUDNLOAD_SYNC);
+    return;
+}
+
+/**********************************************
  * Handlers for each request
  *********************************************/
 
@@ -447,14 +489,13 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->session_in_progress = 1;
 #if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
-//                    printf("data_out_buffer is %x\n", dfu_ctx->data_out_buffer);
 #endif
                     ready_for_data_receive = false;
                     memset(dfu_ctx->data_out_buffer, 0, MAX_TRANSFERT_SIZE);
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
                 }
                 /* This is a new download session (i.e. new file) */
-                dfu_set_state(next_state);
+                //dfu_set_state(next_state);
                 break;
             }
         case DFUDNLOAD_IDLE:
@@ -486,9 +527,9 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     printf("read %dB\n", dfu_ctx->block_size);
                     ready_for_data_receive = false;
                     memset(dfu_ctx->data_out_buffer, 0, MAX_TRANSFERT_SIZE);
-//                    printf("data_out_buffer is %x\n", dfu_ctx->data_out_buffer);
 #endif
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
+
                 }
                 break;
             }
@@ -637,7 +678,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
             }
         case DFUDNLOAD_SYNC:
             {
-                if (dfu_ctx->block_in_progress == 1) {
+                if (dfu_ctx->block_in_progress == 1 || !ready_for_data_receive) {
                     /* Block transfert still in progress */
                     dfu_set_poll_timeout(MAX_POLL_TIMEOUT);
                     dfu_set_state(DFUDNBUSY);
@@ -651,6 +692,9 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
                 status.iString = dfu_get_status_string_id();
 
+                /* if a previous DNLOAD is not yet finished, wait before
+                 * reconfiguring the USB device 
+                 */
                 usb_driver_setup_send((void*)&status, sizeof(status),0);
                 usb_driver_setup_read_status();
                 break;
@@ -854,7 +898,6 @@ static volatile  request_queue_node_t *current_dfu_cmd = NULL;
 struct queue *dfu_cmd_queue = NULL;
 static volatile unsigned int dfu_cmd_queue_empty = 1;
 
-static volatile bool dfu_data_to_store = 0;
 
 
 static void dfu_release_current_dfu_cmd(void)
@@ -887,12 +930,7 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
         dfu_error(ERRUNKNOWN);
         return;
     }
-    if (setup_packet->bRequest == USB_RQST_DFU_DNLOAD) {
-        if (setup_packet->wLength > 0) {
-            // locking right now the state of 'block in progress'
-            dfu_ctx->block_in_progress = 1;
-        }
-    }
+    /**/
 
 #if USB_DFU_DEBUG
     aprintf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
@@ -900,7 +938,8 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
     if(ret){
         aprintf("Error while allocating queue !!!\n");
-        while(1){};
+        dfu_error(ERRUNKNOWN);
+        return;
     }
 
 #if USB_DFU_DEBUG
@@ -1001,41 +1040,7 @@ static void dfu_class_execute_request(void)
 }
 
 
-/*
- * The USB content as been read into local buffer and is waiting to be stored
- * into the flash. This function does this
- */
-static void dfu_store_data(void)
-{
-#if USB_DFU_DEBUG
-    printf("storing data...\n");
-#endif
-    if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
-        printf("Error! storing data in %d mode !", dfu_get_state());
-        dfu_ctx->data_out_current_block_nb += 1;
-        dfu_ctx->block_in_progress = 0;
-        dfu_ctx->poll_start = 0;
-        dfu_set_poll_timeout(0);
-        dfu_data_to_store = 0;
-        dfu_error(ERRUNKNOWN);
-        return;
-    }
-    // FIXME: simulate the IPCs and write access by now...
-    sys_sleep(10, SLEEP_MODE_INTERRUPTIBLE);
-    // now set the write action as done
-    dfu_ctx->data_out_current_block_nb += 1;
-    dfu_ctx->block_in_progress = 0;
-    dfu_ctx->poll_start = 0;
-    dfu_set_poll_timeout(0);
-    dfu_data_to_store = 0;
-    /* INFO: we consider that even if the poll timeout is not finished, we go
-     * back to DNLOAD_SYNC state
-     * FIXME: if we want to be paranoid, we should effecively wait for the
-     * residual timeout before changing current state
-     */
-    dfu_set_state(DFUDNLOAD_SYNC);
-    return;
-}
+
 
 volatile int cur_size = 0;
 
@@ -1052,6 +1057,7 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
      * lowered and the block_in_pogress field of the dfu context is set to 0.
      */
     cur_size += size;
+    aprintf("cur_size:%d, data_out_len:%d\n", cur_size, dfu_ctx->data_out_length);
     if (cur_size == dfu_ctx->data_out_length) {
         dfu_data_to_store = 1;
         ready_for_data_receive = true;
@@ -1062,10 +1068,11 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
 
 static void dfu_data_in_handler(void)
 {
-    if (dfu_ctx->block_in_progress == 1)
-    {
-        dfu_ctx->block_in_progress = 0;
-    }
+    aprintf("end of USB read\n");
+    aprintf("cur_size:%d, data_in_len:%d\n", cur_size, dfu_ctx->data_out_length);
+    dfu_data_to_store = 1;
+    ready_for_data_receive = true;
+    cur_size = 0;
 }
 
 
@@ -1079,15 +1086,14 @@ void dfu_loop(void)
 #if USB_DFU_DEBUG
 	    aprintf_flush();
 #endif
-	    /* storing data and go out of DNBUSY bottom half */
-	    if (dfu_data_to_store) {
-        	dfu_store_data();
-	    }
+	    /* all DFU automaton execution */
+	    dfu_class_execute_request();
 #if USB_DFU_DEBUG
 	    aprintf_flush();
 #endif
-	    /* all DFU automaton execution */
-	    dfu_class_execute_request();
+        if (dfu_data_to_store) {
+            dfu_store_data();
+        }
 #if USB_DFU_DEBUG
 	    aprintf_flush();
 #endif
