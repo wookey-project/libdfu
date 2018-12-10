@@ -3,15 +3,9 @@
 #include "api/syscall.h"
 #include "api/print.h"
 #include "api/dfu.h"
+#include "dfu_priv.h"
 #include "usb.h"
 #include "dfu_desc.h"
-#if 0
-#include "dummy_crypt.h"
-#include "dummy_flash.h"
-#include "stm32f4xx.h"
-#include "stm32f4xx_nvic.h"
-#include "cortex_m4_systick.h"
-#endif
 #include "usb_control.h"
 #include "queue.h"
 
@@ -205,14 +199,9 @@ static volatile const dfu_functional_descriptor_t dfu_fct_desc = {
     .bcdDFUVersion = 0x0101
 };
 
-//#define NOT_TIMER5
-
 static volatile uint8_t data_buffer[MAX_TRANSFERT_SIZE];
 
 static volatile dfu_context_t dfu_context = {0};
-
-
-
 
 static volatile dfu_context_t * const dfu_ctx = &dfu_context;
 
@@ -373,10 +362,9 @@ void dfu_set_poll_timeout(uint32_t t)
 
 
 /**********************************************
- * Storing data handler
+ * Storing data handler, mostly dependent on
+ * user layer callback/
  *********************************************/
-
-static volatile bool dfu_data_to_store = 0;
 
 /*
  * The USB content as been read into local buffer and is waiting to be stored
@@ -393,18 +381,24 @@ static void dfu_store_data(void)
         dfu_ctx->block_in_progress = 0;
         dfu_ctx->poll_start = 0;
         dfu_set_poll_timeout(0);
-        dfu_data_to_store = 0;
+        dfu_ctx->data_to_store = 0;
         dfu_error(ERRUNKNOWN);
         return;
     }
     // FIXME: simulate the IPCs and write access by now...
-    sys_sleep(10, SLEEP_MODE_INTERRUPTIBLE);
+    if (dfu_ctx->cb_write) {
+        dfu_ctx->cb_write(dfu_ctx->data_out_buffer, dfu_ctx->data_out_length);
+    }
     // now set the write action as done
     dfu_ctx->data_out_current_block_nb += 1;
+    /*
+    Should be updated by the main loop. If upper layer received async IPC
+    saying that data has been stored, then update these fields:
     dfu_ctx->block_in_progress = 0;
     dfu_ctx->poll_start = 0;
     dfu_set_poll_timeout(0);
-    dfu_data_to_store = 0;
+    dfu_ctx->data_to_store = 0;
+    */
     /* INFO: we consider that even if the poll timeout is not finished, we go
      * back to DNLOAD_SYNC state
      * FIXME: if we want to be paranoid, we should effecively wait for the
@@ -418,6 +412,9 @@ static void dfu_store_data(void)
  * Handlers for each request
  *********************************************/
 
+/*
+ * Handle DFU_DETACH event
+ */
 void dfu_request_detach(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check and next state detection */
@@ -434,18 +431,7 @@ void dfu_request_detach(struct usb_setup_packet *setup_packet)
     }
 
     /* effective transition execution (if needed) */
-#if 0
-    if( (setup_packet->wLength == 0) && (setup_packet->wValue <= dfu_ctx->detach_timeout_ms) ) {
-        /* The Detach request is not meaningful in our case.
-         * The DFU mode is started by after system reset depending on
-         * the boot mode configuration settings, which means that no other
-         * application is running at that time.
-         */
-        dfu_set_state(APPDETACH);
-    } else {
-        dfu_error(ERRUNKNOWN);
-    }
-#endif
+    /* no action */
     return;
 
 invalid_transition:
@@ -455,6 +441,9 @@ invalid_transition:
 }
 
 
+/*
+ * Handle DFU_DNLOAD event
+ */
 void dfu_request_dnload(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check and next state detection */
@@ -557,6 +546,9 @@ size_too_big:
 }
 
 
+/*
+ * Handle DFU_UPLOAD event
+ */
 void dfu_request_upload(struct usb_setup_packet *setup_packet) 
 {
     /* Sanity check and next state detection */
@@ -626,6 +618,9 @@ size_too_big:
 
 }
 
+/*
+ * Handle DFU_GETSTATUS event
+ */
 void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check and next state detection */
@@ -773,6 +768,9 @@ invalid_transition:
     return;
 }
 
+/*
+ * Handle DFU_CLEAR_STATUS event
+ */
 void dfu_request_clrstatus(struct usb_setup_packet *setup_packet) 
 {
     /* Sanity check and next state detection */
@@ -795,6 +793,10 @@ invalid_transition:
     return;
 }
 
+
+/*
+ * Handle DFU_GETSTATE event
+ */
 void dfu_request_getstate(struct usb_setup_packet *setup_packet) 
 {
     /* Sanity check and next state detection */
@@ -834,6 +836,9 @@ invalid_transition:
     return;
 }
 
+/*
+ * Handle DFU_ABORT event
+ */
 void dfu_request_abort(struct usb_setup_packet *setup_packet) 
 {
     /* Sanity check and next state detection */
@@ -873,10 +878,34 @@ invalid_transition:
 
 
 /*******************************************************
- * End of request logics functions
+ * End of request logics functions. Now let's prepare
+ * ISR vs main thread communication mechanisms
  ******************************************************/
 
-/* request node, to be enqueue in handler mode, dequeue in main thread */
+/*
+ * ISR and main thread communicate using a queuing mechanism.
+ * The ISR is enqueuing events, the main thread is dequeuing and
+ * executing them.
+ * Queue access is protected by the sys_lock() kernel mutual
+ * exclusion mechanism dedicated to specific ISR-specific
+ * problematic (see sys_lock() man page).
+ * The DFU behave like the following:
+ *
+ * ISR                Main thread
+ *  - (enqueue)          .
+ *  |  ---> [1]          .
+ *  -                    .
+ *  - (enqueue)          .
+ *  |  ---> [2]-[1]      .
+ *  -                    -
+ *  .               ---> | (dequeue & exec)
+ *  .
+ */
+
+/*
+ * request node, to be enqueue in handler mode, dequeue in
+ * main thread
+ */
 typedef struct {
     dfu_request_t            request;
     struct usb_setup_packet  setup_packet;
@@ -900,23 +929,15 @@ static volatile unsigned int dfu_cmd_queue_empty = 1;
 
 
 
-static void dfu_release_current_dfu_cmd(void)
-{
-    if (current_dfu_cmd != NULL) {
-        enter_critical_section();
-        if (wfree((void**)&current_dfu_cmd)) {
-            while(1){};
-        }
-        leave_critical_section();
-    }
-    current_dfu_cmd = NULL;
-    return;
-}
-
-
 
 /******************************************************
  * Global root handler dispatcher (handler mode)
+ *
+ * This function respond to the various DFU interrupts,
+ * in ISR mode. This function only enqueue the various
+ * request in order to let the main thread execute these
+ * requests and handle the DFU automaton. This ISR function
+ * is keeped simple and without any external I/O
  *****************************************************/
 static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
 {
@@ -953,9 +974,36 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     return;
 }
 
+/******************************************************
+ * Effective DFU state automaton dispatcher
+ *****************************************************/
+
+/*
+ * Utility function use by the DFU automaton to release DFU
+ * commands which have been dequeued and executed.
+ */
+static void dfu_release_current_dfu_cmd(void)
+{
+    if (current_dfu_cmd != NULL) {
+        enter_critical_section();
+        if (wfree((void**)&current_dfu_cmd)) {
+            while(1){};
+        }
+        leave_critical_section();
+    }
+    current_dfu_cmd = NULL;
+    return;
+}
+
+
+
 
 /******************************************************
  * Global root request executor (main thread)
+ * This is the effective DFU automaton main function
+ *
+ * This function dequeue all the events queued in handler
+ * mode, respecting the events order.
  *****************************************************/
 static void dfu_class_execute_request(void)
 {
@@ -1039,12 +1087,11 @@ static void dfu_class_execute_request(void)
     dfu_release_current_dfu_cmd();
 }
 
-
-
-
-volatile int cur_size = 0;
-
-
+/*
+ * Data out handler, called by the USB stack when the requested data
+ * configured during the dfu_request_dnload() in the USB stack has been
+ * received in the USB device FIFO and copied in the task's buffer.
+ */
 static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
 {
 #if USB_DFU_DEBUG
@@ -1056,23 +1103,19 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
      * buffer content into the flash. When this is done, the flag is
      * lowered and the block_in_pogress field of the dfu context is set to 0.
      */
-    cur_size += size;
-    aprintf("cur_size:%d, data_out_len:%d\n", cur_size, dfu_ctx->data_out_length);
-    if (cur_size == dfu_ctx->data_out_length) {
-        dfu_data_to_store = 1;
-        ready_for_data_receive = true;
-        cur_size = 0;
-    }
+    dfu_ctx->data_to_store = true;
+    ready_for_data_receive = true;
 }
 
-
+/*
+ * Data in handler, called by the USB stack when the task's fifo has been
+ * fully read by the USB device in its own FIFO and sent to the host.
+ */
 static void dfu_data_in_handler(void)
 {
     aprintf("end of USB read\n");
-    aprintf("cur_size:%d, data_in_len:%d\n", cur_size, dfu_ctx->data_out_length);
-    dfu_data_to_store = 1;
+    dfu_ctx->data_to_store = true;
     ready_for_data_receive = true;
-    cur_size = 0;
 }
 
 
@@ -1091,7 +1134,17 @@ void dfu_loop(void)
 #if USB_DFU_DEBUG
 	    aprintf_flush();
 #endif
-        if (dfu_data_to_store) {
+        if (dfu_ctx->data_to_store) {
+            /* FIXME: by now, this action is blocking. Requesting
+             * write to another task and receiving acknowledge for
+             * write done should be separated to be able to respond
+             * to DFU_GETSTATUS in the meantime, this require the DFU
+             * mainloop to support both DFU automaton and a 'write_is_done'
+             * flag, set by an upper layer handler to detect an end of write.
+             * This also mean that the dfu_loop() should not contain a
+             * while (1) loop to support other external events in the
+             * task main loop.
+             */
             dfu_store_data();
         }
 #if USB_DFU_DEBUG
@@ -1127,6 +1180,9 @@ void dfu_init_context(void)
     dfu_context.block_size = MAX_TRANSFERT_SIZE;
     dfu_context.firmware_size = 0;
     dfu_context.current_block_offset = 0;
+    dfu_context.cb_read = 0;
+    dfu_context.cb_write = 0;
+    dfu_context.data_to_store = false;
 }
 
 
@@ -1136,7 +1192,8 @@ void dfu_early_init(void)
 }
 
 
-void dfu_init(void)
+void dfu_init(dfu_write_block_cb_t write_cb,
+              dfu_read_block_cb_t  read_cb)
 {
 
     usb_driver_map();
@@ -1158,6 +1215,15 @@ void dfu_init(void)
         .mft_string_rqst_handler        = NULL,
     };
     usb_ctrl_init(dfu_usb_ctrl_callbacks, dfu_device_desc, dfu_configuration_desc);
+    /*
+     * registering callbacks for read and write events actions
+     * These callbacks are used to execute upper-layer handlers when a read
+     * (upload) or a a write (download) action is requested, to execute
+     * project specific events such as IPC, mass-storage write, etc.)
+     */
+    dfu_ctx->cb_write = write_cb;
+    dfu_ctx->cb_read = read_cb;
+
     usb_driver_init();
     dfu_init_context();
     return;
