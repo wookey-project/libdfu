@@ -183,7 +183,7 @@ static inline void leave_critical_section(void)
     return;
 }
 
-static volatile const dfu_functional_descriptor_t dfu_fct_desc = {
+static volatile dfu_functional_descriptor_t dfu_fct_desc = {
     .bLength = 0x09,
     .bDescriptorType = 0x21,
     .bmAttributes.bitWillDetach = 0,
@@ -195,11 +195,9 @@ static volatile const dfu_functional_descriptor_t dfu_fct_desc = {
 #endif
     .bmAttributes.bitCanDnload = 1,
     .wDetachTimeOut = MAX_TIME_DETACH,
-    .wTransferSize = MAX_TRANSFERT_SIZE,
+    .wTransferSize = 0, /*set at init */
     .bcdDFUVersion = 0x0101
 };
-
-static volatile uint8_t data_buffer[MAX_TRANSFERT_SIZE];
 
 static volatile dfu_context_t dfu_context = {0};
 
@@ -385,8 +383,10 @@ static void dfu_store_data(void)
         dfu_error(ERRUNKNOWN);
         return;
     }
+    printf("callback: %x\n", dfu_ctx->cb_write);
     // FIXME: simulate the IPCs and write access by now...
     if (dfu_ctx->cb_write) {
+        printf("calling application write handler\n");
         dfu_ctx->cb_write(dfu_ctx->data_out_buffer, dfu_ctx->data_out_length);
     }
     // now set the write action as done
@@ -394,11 +394,11 @@ static void dfu_store_data(void)
     /*
     Should be updated by the main loop. If upper layer received async IPC
     saying that data has been stored, then update these fields:
+    */
     dfu_ctx->block_in_progress = 0;
     dfu_ctx->poll_start = 0;
     dfu_set_poll_timeout(0);
     dfu_ctx->data_to_store = 0;
-    */
     /* INFO: we consider that even if the poll timeout is not finished, we go
      * back to DNLOAD_SYNC state
      * FIXME: if we want to be paranoid, we should effecively wait for the
@@ -463,7 +463,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                 {
                     goto download_not_supported;
                 }
-                if (setup_packet->wLength > MAX_TRANSFERT_SIZE) {
+                if (setup_packet->wLength > dfu_ctx->transfert_size) {
                     dfu_ctx->block_in_progress = 0;
                     goto size_too_big;
                 } else {
@@ -480,7 +480,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     printf("read %dB\n", dfu_ctx->block_size);
 #endif
                     ready_for_data_receive = false;
-                    memset(dfu_ctx->data_out_buffer, 0, MAX_TRANSFERT_SIZE);
+                    memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
                 }
                 /* This is a new download session (i.e. new file) */
@@ -500,7 +500,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->block_in_progress = 0;
                     dfu_set_state(DFUMANIFEST_SYNC);
                     usb_driver_setup_send_status(0);
-                } else if (setup_packet->wLength > MAX_TRANSFERT_SIZE) {
+                } else if (setup_packet->wLength > dfu_ctx->transfert_size) {
                     dfu_ctx->block_in_progress = 0;
                     goto size_too_big;
                 } else {
@@ -515,7 +515,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
 #if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
                     ready_for_data_receive = false;
-                    memset(dfu_ctx->data_out_buffer, 0, MAX_TRANSFERT_SIZE);
+                    memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
 #endif
                     usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
 
@@ -540,7 +540,8 @@ download_not_supported:
     return;
 
 size_too_big:
-    printf("dfu error ! input size too big!\n");
+    printf("dfu error ! input size too big! %x > %x\n",
+            setup_packet->wLength, dfu_ctx->transfert_size);
     dfu_error(ERRSTALLEDPKT);
     return;
 }
@@ -576,7 +577,7 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet)
                     usb_driver_setup_send_status(0);
                 } else {
                     /* just stay in current state, managing upload */
-                    if (setup_packet->wLength > MAX_TRANSFERT_SIZE) {
+                    if (setup_packet->wLength > dfu_ctx->transfert_size) {
                         goto size_too_big;
                     } else {
                         read_firmware_data_cmd = 1;
@@ -612,7 +613,8 @@ upload_not_supported:
     return;
 
 size_too_big:
-    printf("dfu error ! input size too big!\n");
+    printf("dfu error ! input size too big! %x > %x\n",
+            setup_packet->wLength, dfu_ctx->transfert_size);
     dfu_error(ERRSTALLEDPKT);
     return;
 
@@ -1160,15 +1162,20 @@ void dfu_loop(void)
 
 void dfu_init_context(void)
 {
+    uint16_t transfert_size = dfu_context.transfert_size ? dfu_context.transfert_size : 0;
+    uint8_t  **buffer = dfu_context.data_out_buffer ? dfu_context.data_out_buffer : 0;
+    dfu_write_block_cb_t write_cb = dfu_context.cb_write ? dfu_context.cb_write : 0;
+    dfu_read_block_cb_t read_cb = dfu_context.cb_read ? dfu_context.cb_read : 0;
+
     dfu_context.block_in_progress = 0;
     dfu_context.session_in_progress = 0;
     dfu_context.status = OK;
     dfu_context.state = DFUIDLE;
-    dfu_context.data_out_buffer = (uint8_t**)&data_buffer;
+    dfu_context.data_out_buffer = (uint8_t**)buffer;
     dfu_context.data_out_current_block_nb = 0;
     dfu_context.data_out_nb_blocks = 0;
     dfu_context.data_out_length = 0;
-    dfu_context.data_in_buffer = (uint8_t**)&data_buffer;
+    dfu_context.data_in_buffer = (uint8_t**)buffer;
     dfu_context.data_in_nb_blocks = 0;
     dfu_context.data_in_current_block_nb = 0;
     dfu_context.data_in_length = 0;
@@ -1177,11 +1184,12 @@ void dfu_init_context(void)
     dfu_context.detach_timeout_start = 0;
     dfu_context.poll_timeout_ms = MAX_POLL_TIMEOUT;
     dfu_context.poll_start = 0;
-    dfu_context.block_size = MAX_TRANSFERT_SIZE;
+    dfu_context.block_size = transfert_size; /* TODO: this size must be a power of 2 and beetween 64 and 65k */
+    dfu_context.transfert_size = transfert_size; /* TODO: this size must be a power of 2 and beetween 64 and 65k */
     dfu_context.firmware_size = 0;
     dfu_context.current_block_offset = 0;
-    dfu_context.cb_read = 0;
-    dfu_context.cb_write = 0;
+    dfu_context.cb_read = read_cb;
+    dfu_context.cb_write = write_cb;
     dfu_context.data_to_store = false;
 }
 
@@ -1193,7 +1201,9 @@ void dfu_early_init(void)
 
 
 void dfu_init(dfu_write_block_cb_t write_cb,
-              dfu_read_block_cb_t  read_cb)
+              dfu_read_block_cb_t  read_cb,
+              uint8_t **buffer,
+              uint16_t max_size)
 {
 
     usb_driver_map();
@@ -1214,6 +1224,7 @@ void dfu_init(dfu_write_block_cb_t write_cb,
         .functional_rqst_handler        = dfu_functional_desc_request_handler,
         .mft_string_rqst_handler        = NULL,
     };
+    dfu_configuration_desc.functional_desc.wTransferSize = max_size;
     usb_ctrl_init(dfu_usb_ctrl_callbacks, dfu_device_desc, dfu_configuration_desc);
     /*
      * registering callbacks for read and write events actions
@@ -1221,10 +1232,25 @@ void dfu_init(dfu_write_block_cb_t write_cb,
      * (upload) or a a write (download) action is requested, to execute
      * project specific events such as IPC, mass-storage write, etc.)
      */
-    dfu_ctx->cb_write = write_cb;
-    dfu_ctx->cb_read = read_cb;
+    printf("initializing buffer to %x, size %x\n", buffer, max_size);
+    dfu_context.cb_write = write_cb;
+    dfu_context.cb_read = read_cb;
+    dfu_fct_desc.wTransferSize = max_size;
 
-    usb_driver_init();
+/* if max_size is less than 64 or not a power of 2, it is an error */
+    if (     (max_size < 64)
+        || ! ((max_size && !(max_size & (max_size - 1)))))
+    {
+        printf("max_size %x is invalid\n", max_size);
+    }
+
     dfu_init_context();
+    dfu_context.data_out_buffer = buffer;
+    dfu_context.data_in_buffer = buffer;
+    dfu_context.block_size = 0;
+    dfu_context.transfert_size = max_size;
+    dfu_context.cb_read  = read_cb;
+    dfu_context.cb_write = write_cb;
+    usb_driver_init();
     return;
 }

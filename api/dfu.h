@@ -28,7 +28,9 @@ typedef uint8_t (*dfu_read_block_cb_t)(uint8_t *data, uint16_t size);
 void dfu_early_init(void);
 
 void dfu_init(dfu_write_block_cb_t write_cb,
-              dfu_read_block_cb_t  read_cb);
+              dfu_read_block_cb_t  read_cb,
+              uint8_t **buffer,
+              uint16_t max_size);
 
 void dfu_early_init(void);
 

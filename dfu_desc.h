@@ -48,7 +48,7 @@ const usb_ctrl_device_descriptor_t dfu_device_desc = {
  * \brief Configuration descriptor
  *
  */
-const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
+static usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
 	.config_desc = {
     	.bLength = sizeof(usb_ctrl_configuration_descriptor_t),
     	.bDescriptorType = USB_DESC_CONFIG,
@@ -85,7 +85,7 @@ const usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
 	/* 1 second timeout */
 	.wDetachTimeOut = 1000,
 	/* Big transfer size chunks */
-	.wTransferSize = MAX_TRANSFERT_SIZE,
+	.wTransferSize = 0, /* Updated during dfu_init() */
 	/* DFU 1.1 */
 	.bcdDFUVersion = 0x0110, 
     },

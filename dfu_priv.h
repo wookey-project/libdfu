@@ -42,7 +42,6 @@ typedef struct __packed {
 
 #define DFU_QUEUE_MAX_SIZE 10
 #define DFU_DATA_QUEUE_MAX_SIZE 10
-#define MAX_TRANSFERT_SIZE 2048
 #define MAX_POLL_TIMEOUT 50
 
 typedef enum dfu_request {
@@ -129,6 +128,7 @@ typedef struct  {
     uint16_t              poll_timeout_ms;
     uint64_t              poll_start;
     int16_t               block_size;
+    uint16_t              transfert_size;
     int32_t               firmware_size;
     uint8_t **            data_out_buffer;
     uint8_t **            data_in_buffer;
