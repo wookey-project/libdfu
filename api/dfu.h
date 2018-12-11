@@ -24,17 +24,54 @@ typedef uint8_t (*dfu_write_block_cb_t)(uint8_t ** volatile data, uint16_t size)
 typedef uint8_t (*dfu_read_block_cb_t)(uint8_t *data, uint16_t size);
 
 
-
+/*
+ * Early initialization, declaring the DFU stack. This include the USB
+ * stack initialisation. This function must be called before the 
+ * sys_init(INIT_DONE) call.
+ * Request PERM_RES_DEV_BUSES permission.
+ * CAUTION: in USB-HS mode, the task must have the MAP_VOLUNTARY permission
+ */
 void dfu_early_init(void);
 
+/**
+ * @brief initialize the DFU stack
+ *
+ * @param write_cb the callback executed when an input buffer is ready to be
+ *                 stored
+ * @param read_cb  the callback executed when an input data is requested from
+ *                 the DFU stack (in upload mode)
+ * @param buffer   the data buffer to use for storing data from/to USB FIFO
+ * @param max_size the buffer size, at least 64, must be a power of 2.
+ */
 void dfu_init(dfu_write_block_cb_t write_cb,
               dfu_read_block_cb_t  read_cb,
               uint8_t **buffer,
               uint16_t max_size);
 
-void dfu_early_init(void);
+/**
+ * Run the DFU automaton.
+ * This is *not* a loop, as the task may require to support, in the same loop,
+ * external events, such as IPC. The task has to handle the loop, using a
+ * block such as:
+ * while (1) {
+ *   dfu_exec_automaton();
+ *   if (sys_ipc(IPC_RECV_ASYNC, &id, &buf) == SYS_E_DONE) {
+ *     // handle IPC request
+ *   }
+ * }
+ */
+void dfu_exec_automaton(void);
 
-void dfu_loop(void);
+/*
+ * The storing backend has finished to store data ? This function inform the
+ * DFU that it can leave the DNLOAD_SYNC/DNBUSY couple.
+ */
+void dfu_store_finished(void);
 
+/*
+ * The loading backend has finished to load data ? This function inform the
+ * DFU that it can send the buffer content into the USB device output FIFO
+ */
+void dfu_load_finished(void);
 
 #endif

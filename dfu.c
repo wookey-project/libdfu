@@ -383,14 +383,18 @@ static void dfu_store_data(void)
         dfu_error(ERRUNKNOWN);
         return;
     }
-    printf("callback: %x\n", dfu_ctx->cb_write);
-    // FIXME: simulate the IPCs and write access by now...
     if (dfu_ctx->cb_write) {
-        printf("calling application write handler\n");
         dfu_ctx->cb_write(dfu_ctx->data_out_buffer, dfu_ctx->data_out_length);
     }
     // now set the write action as done
     dfu_ctx->data_out_current_block_nb += 1;
+    /* store request sent, no more data to store by now */
+    dfu_ctx->data_to_store = 0;
+    return;
+}
+
+void dfu_store_finished(void)
+{
     /*
     Should be updated by the main loop. If upper layer received async IPC
     saying that data has been stored, then update these fields:
@@ -398,15 +402,40 @@ static void dfu_store_data(void)
     dfu_ctx->block_in_progress = 0;
     dfu_ctx->poll_start = 0;
     dfu_set_poll_timeout(0);
-    dfu_ctx->data_to_store = 0;
-    /* INFO: we consider that even if the poll timeout is not finished, we go
-     * back to DNLOAD_SYNC state
-     * FIXME: if we want to be paranoid, we should effecively wait for the
-     * residual timeout before changing current state
-     */
-    dfu_set_state(DFUDNLOAD_SYNC);
+}
+
+void dfu_load_finished(void)
+{
+    // FIXME: this part has to be implemented
+}
+
+/*
+ * DNBUSY timeout is not timer-based. At each automaton schedule, we check
+ * if:
+ * 1) we are in DNBUSY state
+ * 2) we spent more time than the configured timeout
+ * if this is the case, we go back in DNLOAD_BUSY state
+ */
+static void dfu_handle_dnbusy_timeout(void)
+{
+
+    if (dfu_get_state() == DFUDNBUSY) {
+        uint64_t ms;
+        uint8_t ret;
+        ret = sys_get_systick(&ms, PREC_MILLI);
+        if (ret != SYS_E_DONE) {
+            printf("Error: unable to get systick value !\n");
+            goto err;
+        }
+        /* detecting timeout */
+        if ((ms - dfu_ctx->poll_start) > dfu_ctx->poll_timeout_ms) {
+            dfu_set_state(DFUDNLOAD_SYNC);
+        }
+    }
+err:
     return;
 }
+
 
 /**********************************************
  * Handlers for each request
@@ -1122,37 +1151,32 @@ static void dfu_data_in_handler(void)
 
 
 /****************************************************
- * DFU main loop
+ * DFU automaton main call
  **************************************************/
 
-void dfu_loop(void)
+void dfu_exec_automaton(void)
 {
-    while(1){
+    /* handle end of DNBUSY state */
+    dfu_handle_dnbusy_timeout();
 #if USB_DFU_DEBUG
-	    aprintf_flush();
+    aprintf_flush();
 #endif
-	    /* all DFU automaton execution */
-	    dfu_class_execute_request();
-#if USB_DFU_DEBUG
-	    aprintf_flush();
-#endif
-        if (dfu_ctx->data_to_store) {
-            /* FIXME: by now, this action is blocking. Requesting
-             * write to another task and receiving acknowledge for
-             * write done should be separated to be able to respond
-             * to DFU_GETSTATUS in the meantime, this require the DFU
-             * mainloop to support both DFU automaton and a 'write_is_done'
-             * flag, set by an upper layer handler to detect an end of write.
-             * This also mean that the dfu_loop() should not contain a
-             * while (1) loop to support other external events in the
-             * task main loop.
-             */
-            dfu_store_data();
-        }
-#if USB_DFU_DEBUG
-	    aprintf_flush();
-#endif
+    if (dfu_ctx->data_to_store) {
+        /* request data store. Effective data store is not synchronous and
+         * has to be acknowledge using dfu_store_finished() on the upper layer.
+         * This permit to support DFU requests from host in the meantime.
+         */
+        dfu_store_data();
     }
+#if USB_DFU_DEBUG
+    aprintf_flush();
+#endif
+    /* all DFU automaton execution */
+    dfu_class_execute_request();
+#if USB_DFU_DEBUG
+    aprintf_flush();
+#endif
+
 }
 
 
