@@ -29,10 +29,28 @@ typedef struct dfu_request_transition {
 
 volatile bool ready_for_data_receive = true;
 
+
+/****************************************************************
+ * DFU state automaton formal definition and associate utility
+ * functions
+ ***************************************************************/
+
 /*
  * all allowed transitions and target states for each current state
  * empty fields are set as 0xff/0xff for request/state couple, which is
  * an inexistent state and request
+ *
+ * This table associate each state of the DFU automaton with up to
+ * 5 potential allowed transitions/next_state couples. This permit to
+ * easily detect:
+ *    1) authorized transitions, based on the current state
+ *    2) next state, based on the current state and current transition
+ *
+ * If the next_state for the current transision is keeped to 0xff, this
+ * means that the current transition for the current state may lead to
+ * multiple next state depending on other informations (see the official
+ * DFU standard 1.1 state automaton (Figure A.1, p.28)). In this case,
+ * the transition handler has to handle this manually.
  */
 static const struct {
     dfu_state_enum_t          state;
@@ -128,9 +146,17 @@ static const struct {
     },
 };
 
-/*
- * Return the next automaton state, depending on the current state
- * and the current request
+/*!
+ * \brief return the next automaton state
+ *
+ * The next state is returned depending on the current state
+ * and the current request. In some case, it can be 0xff if multiple
+ * next states are possible.
+ *
+ * \param current_state the current automaton state
+ * \param request       the current transition request
+ *
+ * \return the next state, or 0xff
  */
 static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
         dfu_request_t    request)
@@ -144,9 +170,15 @@ static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
     return 0xff;
 }
 
-/*
- * Is the current request valid for the current state ?
- * DFU standard 1.1 state automaton (Figure A.1, p.28)
+/*!
+ * \brief Specify if the current request is valid for the current state
+ *
+ * See DFU standard 1.1 state automaton (Figure A.1, p.28)
+ *
+ * \param current_state the current automaton state
+ * \param request       the current transition request
+ *
+ * \return true if the transition request is allowed for this state, or false
  */
 static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
         dfu_request_t    request)
@@ -163,6 +195,20 @@ static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
     return false;
 }
 
+/*********************************************************************
+ * Mutexes, protection against race conditions...
+ ********************************************************************/
+
+/*
+ * \brief entering a critical section
+ *
+ * During this critical section, any ISR is postponed to avoid any
+ * race condition on variables shared in write-access between ISR and
+ * main thread. See sys_lock() syscall API documentation.
+ *
+ * Critical sections must be as short as possible to avoid border
+ * effects such as latency increase and ISR queue overloading.
+ */
 static inline void enter_critical_section(void)
 {
     uint8_t ret;
@@ -173,6 +219,11 @@ static inline void enter_critical_section(void)
     return;
 }
 
+/*
+ * \brief leaving a critical section
+ *
+ * Reallow the execution of the previously postponed task ISR.
+ */
 static inline void leave_critical_section(void)
 {
     uint8_t ret;
@@ -183,6 +234,14 @@ static inline void leave_critical_section(void)
     return;
 }
 
+
+/**********************************************
+ * DFU globals
+ *********************************************/
+
+/*
+ * DFU functional descriptor, which can be requested by the host
+ */
 static volatile dfu_functional_descriptor_t dfu_fct_desc = {
     .bLength = 0x09,
     .bDescriptorType = 0x21,
@@ -199,6 +258,12 @@ static volatile dfu_functional_descriptor_t dfu_fct_desc = {
     .bcdDFUVersion = 0x0101
 };
 
+/*
+ * The DFU stack context. This is a global variable, which means
+ * that the DFU stack is not reentrant (not for dfu_context write access).
+ * As most micro-controlers are not multicore based, this should not be
+ * a problem.
+ */
 static volatile dfu_context_t dfu_context = {0};
 
 static volatile dfu_context_t * const dfu_ctx = &dfu_context;
@@ -211,7 +276,7 @@ typedef struct {
 } dfu_data_block_t;
 
 /**********************************************
- * DFU getters
+ * DFU getters and setters
  *********************************************/
 
 uint32_t dfu_get_poll_timeout(void){
@@ -223,22 +288,20 @@ static inline uint8_t dfu_get_state() {
     return dfu_ctx->state;
 }
 
+static inline uint8_t dfu_get_status() {
+    return dfu_ctx->status;
+}
+
+uint8_t dfu_get_status_string_id() {
+    // TODO
+    return 0;
+}
 
 static inline void dfu_set_status(const dfu_status_enum_t new_status) {
     dfu_ctx->status = new_status;
 }
 
 
-static inline uint8_t dfu_get_status() {
-    //printf("\n");
-    return dfu_ctx->status;
-}
-
-uint8_t dfu_get_status_string_id() {
-    return 0;
-}
-
-/***********************************************/
 static inline void dfu_set_state(const uint8_t new_state)
 {
     if (new_state == 0xff) {
@@ -250,12 +313,51 @@ static inline void dfu_set_state(const uint8_t new_state)
     dfu_ctx->state = new_state;
 }
 
+void dfu_set_poll_timeout(uint32_t t)
+{
 
+    uint64_t ms;
+    uint8_t ret;
+
+#if USB_DFU_DEBUG
+    printf("setting poll_timeout_ms to %d\n", t);
+#endif
+    dfu_ctx->poll_timeout_ms = t;
+    ret = sys_get_systick(&ms, PREC_MILLI);
+    if (ret != SYS_E_DONE) {
+        printf("Error: unable to get systick value !\n");
+    }
+    dfu_ctx->poll_start = ms;
+
+}
+
+
+/**********************************************
+ * DFU generic utility functions
+ *********************************************/
+
+/*!
+ * Preparing the USB stack for stalling. This is requested
+ * when a local 'block_in_progress' is still executed while
+ * the host is requesting a status. The IP will then
+ * automatically send stall events while we finished the
+ * local treatement (read or write access)
+ */
 static void dfu_prepare_stall(void)
 {
     usb_driver_stall_out(0);
 }
 
+/*
+ * Manage various DFU errors. This can be:
+ * - STALLEDPKT (get status while the block_in_progress is not finished)
+ * - invalid transition request
+ * - invalid input size (data too big for local buffer)
+ * etc.
+ * DFU errors are sent back to the host:
+ * - for informational purpose
+ * - to support resiliency (reseting upload/download work...)
+ */
 static inline void dfu_error(const dfu_status_enum_t new_status)
 {
 #if USB_DFU_DEBUG
@@ -274,9 +376,6 @@ static inline void dfu_error(const dfu_status_enum_t new_status)
 #endif
     dfu_set_status(new_status);
 }
-
-/***********************************************/
-
 
 
 
@@ -323,12 +422,14 @@ static void dfu_functional_desc_request_handler(uint16_t wLength)
 
 static uint8_t dfu_validate_suffix(dfu_suffix_t * dfu_suffix __attribute__((unused)))
 {
+    // TODO
     return 1;
 }
 
 
 static uint8_t dfu_validate_sec_suffix(dfu_sec_metadata_hdr_t * dfu_sec_metadata_hdr __attribute__((unused)))
 {
+    // TODO
     return 1;
 }
 
@@ -336,26 +437,8 @@ static uint8_t dfu_validate_sec_suffix(dfu_sec_metadata_hdr_t * dfu_sec_metadata
 static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
         uint32_t length __attribute__((unused)))
 {
-    //printf("\n");
+    // TODO
     return 1;
-}
-
-void dfu_set_poll_timeout(uint32_t t)
-{
-
-    uint64_t ms;
-    uint8_t ret;
-
-#if USB_DFU_DEBUG
-    printf("setting poll_timeout_ms to %d\n", t);
-#endif
-    dfu_ctx->poll_timeout_ms = t;
-    ret = sys_get_systick(&ms, PREC_MILLI);
-    if (ret != SYS_E_DONE) {
-        printf("Error: unable to get systick value !\n");
-    }
-    dfu_ctx->poll_start = ms;
-
 }
 
 
@@ -393,6 +476,15 @@ static void dfu_store_data(void)
     return;
 }
 
+/*
+ * This procedure is a *callback*. The DFU stack has no knowledge of
+ * when the effective storage backend write is finished and request the
+ * upper layer (the DFU application) to inform it when the write is finished.
+ *
+ * This function set the write action as finished and allows the host to
+ * send the next chunk and permit (if the poll_timeout is 0) to fo back to DNLOAD_SYNC
+ * or to DNLOAD_IDLE (depending on the current state)
+ */
 void dfu_store_finished(void)
 {
     /*
@@ -404,10 +496,20 @@ void dfu_store_finished(void)
     dfu_set_poll_timeout(0);
 }
 
+/*
+ * same principle as for the dfu_store_finished. This permit to inform
+ * the DFU stack that its buffer has been fullfill with the firware chunk content and
+ * can now be sent to the host.
+ */
 void dfu_load_finished(void)
 {
-    // FIXME: this part has to be implemented
+    // TODO: this part has to be implemented
 }
+
+
+/**********************************************
+ * Timeout management for DNBUSY state
+ *********************************************/
 
 /*
  * DNBUSY timeout is not timer-based. At each automaton schedule, we check
