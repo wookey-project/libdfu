@@ -9,7 +9,7 @@
 #include "usb_control.h"
 #include "queue.h"
 
-#define USB_DFU_DEBUG 1
+#define USB_DFU_DEBUG 0
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
@@ -357,7 +357,6 @@ static inline void leave_critical_section(void)
     return;
 }
 
-
 /**********************************************
  * DFU globals
  *********************************************/
@@ -432,7 +431,9 @@ static inline void dfu_set_state(const uint8_t new_state)
         while (1) {};
         return;
     }
+#if USB_DFU_DEBUG
     printf("state: %x => %x\n", dfu_ctx->state, new_state);
+#endif
     dfu_ctx->state = new_state;
 }
 
@@ -576,17 +577,19 @@ static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
  */
 static void dfu_store_data(void)
 {
-#if USB_DFU_DEBUG
-    printf("storing data...\n");
+#if 0
+    printf("storing data..., state: %x\n", dfu_get_state());
 #endif
     if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
+#if 0
         printf("Error! storing data in %d mode !", dfu_get_state());
         dfu_ctx->data_out_current_block_nb += 1;
         dfu_ctx->block_in_progress = 0;
         dfu_ctx->poll_start = 0;
         dfu_set_poll_timeout(0);
-        dfu_ctx->data_to_store = 0;
+        dfu_ctx->data_to_store = false;
         dfu_error(ERRUNKNOWN);
+#endif
         return;
     }
     if (dfu_ctx->cb_write) {
@@ -595,7 +598,7 @@ static void dfu_store_data(void)
     // now set the write action as done
     dfu_ctx->data_out_current_block_nb += 1;
     /* store request sent, no more data to store by now */
-    dfu_ctx->data_to_store = 0;
+    dfu_ctx->data_to_store = false;
     return;
 }
 
@@ -731,7 +734,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     dfu_ctx->session_in_progress = 1;
-#if USB_DFU_DEBUG
+#if 1
                     printf("read %dB\n", dfu_ctx->block_size);
 #endif
                     ready_for_data_receive = false;
@@ -769,7 +772,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     ready_for_data_receive = false;
-#if USB_DFU_DEBUG
+#if 1
                     printf("read %dB\n", dfu_ctx->block_size);
                     memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
 #endif
@@ -931,7 +934,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
             }
         case DFUDNLOAD_SYNC:
             {
-                if (dfu_ctx->block_in_progress == 1 || !ready_for_data_receive) {
+                if (dfu_ctx->block_in_progress == 1) {
                     /* Block transfert still in progress */
                     dfu_set_poll_timeout(MAX_POLL_TIMEOUT);
                     dfu_set_state(DFUDNBUSY);
@@ -1133,6 +1136,7 @@ void dfu_request_abort(struct usb_setup_packet *setup_packet)
     return;
 
 invalid_transition:
+    printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
     return;
 }
@@ -1238,7 +1242,7 @@ static void dfu_release_current_dfu_cmd(void)
     if (current_dfu_cmd != NULL) {
         enter_critical_section();
         if (wfree((void**)&current_dfu_cmd)) {
-            while(1){};
+            dfu_error(ERRUNKNOWN);
         }
         leave_critical_section();
     }
@@ -1269,7 +1273,9 @@ static void dfu_class_execute_request(void)
     }
     leave_critical_section();
 #if USB_DFU_DEBUG
-    printf("[main thread] DEQUEUING\n");
+    printf("[main thread] DEQUEUING, state is: ");
+    dfu_state_enum_t old_state, new_state;
+    old_state = dfu_get_state();
 #endif
     switch( current_dfu_cmd->setup_packet.bRequest ) {
         case USB_RQST_DFU_DETACH:
@@ -1334,10 +1340,15 @@ static void dfu_class_execute_request(void)
             printf("dfu: %s: unknown request %d\n", __func__, current_dfu_cmd->setup_packet.bRequest);
             dfu_error(ERRUNKNOWN);
     }
+#if USB_DFU_DEBUG
+    new_state = dfu_get_state();
+    printf("[XXX] WE HAVE TRANSITIONED FROM %s to %s, the request was %s\n", print_state_name(old_state), print_state_name(new_state), print_request_name(current_dfu_cmd->setup_packet.bRequest));
+#endif
     /* FIXME: current dfu cmd does not need to be global */
     dfu_release_current_dfu_cmd();
 }
 
+volatile int cur_size = 0;
 /*
  * Data out handler, called by the USB stack when the requested data
  * configured during the dfu_request_dnload() in the USB stack has been
@@ -1345,7 +1356,7 @@ static void dfu_class_execute_request(void)
  */
 static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
 {
-#if USB_DFU_DEBUG
+#if 1
     aprintf("end of USB read\n");
 #endif
     /* all data received from host. This handler is executed by the lower
@@ -1354,8 +1365,14 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
      * buffer content into the flash. When this is done, the flag is
      * lowered and the block_in_pogress field of the dfu context is set to 0.
      */
-    dfu_ctx->data_to_store = true;
-    ready_for_data_receive = true;
+//    cur_size += size;
+//    if (cur_size == dfu_ctx->data_out_length) {
+        ready_for_data_receive = true;
+        cur_size = 0;
+        dfu_usb_read_in_progress = false;
+        //out_handler_read_cnt++;
+        dfu_ctx->data_to_store = true;
+//    }
 }
 
 /*
@@ -1364,9 +1381,14 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
  */
 static void dfu_data_in_handler(void)
 {
+#if USB_DFU_DEBUG
     aprintf("end of USB read\n");
-    dfu_ctx->data_to_store = true;
-    ready_for_data_receive = true;
+#endif
+    dfu_usb_write_in_progress = false;
+    if (dfu_ctx->block_in_progress == 1)
+    {
+        dfu_ctx->block_in_progress = 0;
+    }
 }
 
 
@@ -1381,7 +1403,7 @@ void dfu_exec_automaton(void)
 #if USB_DFU_DEBUG
     aprintf_flush();
 #endif
-    if (dfu_ctx->data_to_store) {
+    if (dfu_ctx->data_to_store == true) {
         /* request data store. Effective data store is not synchronous and
          * has to be acknowledge using dfu_store_finished() on the upper layer.
          * This permit to support DFU requests from host in the meantime.
@@ -1428,8 +1450,8 @@ void dfu_init_context(void)
     dfu_context.detach_timeout_start = 0;
     dfu_context.poll_timeout_ms = MAX_POLL_TIMEOUT;
     dfu_context.poll_start = 0;
-    dfu_context.block_size = transfert_size; /* TODO: this size must be a power of 2 and beetween 64 and 65k */
-    dfu_context.transfert_size = transfert_size; /* TODO: this size must be a power of 2 and beetween 64 and 65k */
+    dfu_context.block_size = transfert_size;
+    dfu_context.transfert_size = transfert_size;
     dfu_context.firmware_size = 0;
     dfu_context.current_block_offset = 0;
     dfu_context.cb_read = read_cb;
