@@ -24,7 +24,9 @@ static volatile bool dfu_usb_write_in_progress = false;
 
 static void dfu_usb_driver_setup_read_status(void){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-	    aprintf_flush();
+#if USB_DFU_DEBUG
+		aprintf_flush();
+#endif
 		continue;
 	}
 	dfu_usb_read_in_progress = true;
@@ -38,7 +40,9 @@ static void dfu_usb_driver_setup_read_status(void){
 static volatile uint32_t read_cnt = 0;
 void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-	    aprintf_flush();
+#if USB_DFU_DEBUG
+		aprintf_flush();
+#endif
 		continue;
 	}
 	dfu_usb_read_in_progress = true;
@@ -53,7 +57,9 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 
 static void dfu_usb_driver_stall_out(){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-	    aprintf_flush();
+#if USB_DFU_DEBUG
+		aprintf_flush();
+#endif
 		continue;
 	}
 	dfu_usb_write_in_progress = true;
@@ -67,7 +73,9 @@ static void dfu_usb_driver_stall_out(){
 
 static void dfu_usb_driver_setup_send_status(int status){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-	    aprintf_flush();
+#if USB_DFU_DEBUG
+		aprintf_flush();
+#endif
 		continue;
 	}
 	dfu_usb_write_in_progress = true;
@@ -81,7 +89,9 @@ static void dfu_usb_driver_setup_send_status(int status){
 
 void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-	    aprintf_flush();
+#if USB_DFU_DEBUG
+		aprintf_flush();
+#endif
 		continue;
 	}
 	dfu_usb_write_in_progress = true;
@@ -734,7 +744,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     dfu_ctx->session_in_progress = 1;
-#if 1
+#if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
 #endif
                     ready_for_data_receive = false;
@@ -772,7 +782,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     ready_for_data_receive = false;
-#if 1
+#if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
                     memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
 #endif
@@ -1356,7 +1366,7 @@ volatile int cur_size = 0;
  */
 static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
 {
-#if 1
+#if USB_DFU_DEBUG
     aprintf("end of USB read\n");
 #endif
     /* all data received from host. This handler is executed by the lower
