@@ -18,6 +18,129 @@
 uint8_t read_firmware_data_cmd = 0;
 uint8_t read_firmware_data_done = 0;
 
+/********* USB layer handling ***************/
+static volatile bool dfu_usb_read_in_progress = false;
+static volatile bool dfu_usb_write_in_progress = false;
+
+static void dfu_usb_driver_setup_read_status(void){
+	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+	    aprintf_flush();
+		continue;
+	}
+	dfu_usb_read_in_progress = true;
+#if USB_DFU_DEBUG
+	printf("==> READ dfu_usb_driver_setup_read_status\n");
+#endif
+	usb_driver_setup_read_status();
+	return;
+}
+
+static volatile uint32_t read_cnt = 0;
+void dfu_usb_driver_setup_read(void *dst, uint32_t size){
+	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+	    aprintf_flush();
+		continue;
+	}
+	dfu_usb_read_in_progress = true;
+#if USB_DFU_DEBUG
+	printf("==> READ %d dfu_usb_driver_setup_read %d\n", read_cnt, size);
+#endif
+	read_cnt++;
+	usb_driver_setup_read(dst, size, 0);
+	return;
+}
+
+
+static void dfu_usb_driver_stall_out(){
+	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+	    aprintf_flush();
+		continue;
+	}
+	dfu_usb_write_in_progress = true;
+#if USB_DFU_DEBUG
+	printf("==> SEND dfu_usb_driver_stall_out\n");
+#endif
+	usb_driver_stall_out(0);
+	dfu_usb_write_in_progress = false;
+	return;
+}
+
+static void dfu_usb_driver_setup_send_status(int status){
+	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+	    aprintf_flush();
+		continue;
+	}
+	dfu_usb_write_in_progress = true;
+#if USB_DFU_DEBUG
+	printf("==> SEND dfu_usb_driver_setup_send_status %d\n", status);
+#endif
+	usb_driver_setup_send_status(status);
+	dfu_usb_write_in_progress = false;
+	return;
+}
+
+void dfu_usb_driver_setup_send(const void *src, uint32_t size){
+	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+	    aprintf_flush();
+		continue;
+	}
+	dfu_usb_write_in_progress = true;
+#if USB_DFU_DEBUG
+	printf("==> SEND dfu_usb_driver_setup_send %d\n", size);
+#endif
+	usb_driver_setup_send(src, size, 0);
+	return;
+}
+
+
+/********************************************/
+
+#if USB_DFU_DEBUG
+static const char *request_name[] = {
+    "USB_RQST_DFU_DETACH",
+    "USB_RQST_DFU_DNLOAD",
+    "USB_RQST_DFU_UPLOAD",
+    "USB_RQST_DFU_GET_STATUS",
+    "USB_RQST_DFU_CLEAR_STATUS",
+    "USB_RQST_DFU_GET_STATE",
+    "USB_RQST_DFU_ABORT"
+};
+static const char *unknown_request_name = "UKNOWN REQUEST";
+static const char *print_request_name(dfu_request_t req){
+	if(req <= 0x06){
+		return request_name[req];
+	}
+	else{
+		return unknown_request_name;
+	}
+}
+
+static const char *state_name[] = {
+    "APPIDLE",
+    "APPDETACH",             
+    "DFUIDLE",               
+    "DFUDNLOAD_SYNC",        
+    "DFUDNBUSY",             
+    "DFUDNLOAD_IDLE",        
+    "DFUMANIFEST_SYNC",      
+    "DFUMANIFEST",           
+    "DFUMANIFEST_WAIT_RESET",
+    "DFUUPLOAD_IDLE",        
+    "DFUERROR",
+};
+static const char *unknown_state_name = "UKNOWN STATE";
+static const char *print_state_name(dfu_state_enum_t state){
+	if(state <= 0x0A){
+		return state_name[state];
+	}
+	else{
+		return unknown_state_name;
+	}
+}
+#endif
+
+
+
 /*
  * Association between a request and a transition to a next state. This couple
  * depend on the current state and is use in the following structure
@@ -345,7 +468,7 @@ void dfu_set_poll_timeout(uint32_t t)
  */
 static void dfu_prepare_stall(void)
 {
-    usb_driver_stall_out(0);
+    dfu_usb_driver_stall_out();
 }
 
 /*
@@ -405,18 +528,18 @@ static void dfu_functional_desc_request_handler(uint16_t wLength)
 {
     //aprintf("functional desc requested, wlength=%d\n", wLength);
     if ( wLength == 0 ){
-        usb_driver_setup_send_status(0);
-        usb_driver_setup_read_status();
+        dfu_usb_driver_setup_send_status(0);
+        dfu_usb_driver_setup_read_status();
         return;
     }
 
     if ( wLength >  dfu_fct_desc.bLength) {
-        usb_driver_setup_send((uint8_t *)&dfu_fct_desc, dfu_fct_desc.bLength,0);
+        dfu_usb_driver_setup_send((uint8_t *)&dfu_fct_desc, dfu_fct_desc.bLength);
     }else{
-        usb_driver_setup_send((uint8_t *)&dfu_fct_desc, wLength,0);
+        dfu_usb_driver_setup_send((uint8_t *)&dfu_fct_desc, wLength);
     }
 
-    usb_driver_setup_read_status();
+    dfu_usb_driver_setup_read_status();
 }
 
 
@@ -566,6 +689,7 @@ void dfu_request_detach(struct usb_setup_packet *setup_packet)
     return;
 
 invalid_transition:
+    printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
     return;
 
@@ -604,18 +728,19 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->data_out_length = setup_packet->wLength;
                     dfu_set_state(DFUDNLOAD_SYNC); /* We have data to dl */
                     dfu_ctx->block_in_progress = 1;
-                    usb_driver_setup_send_status(0);
+                    dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     dfu_ctx->session_in_progress = 1;
 #if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
 #endif
                     ready_for_data_receive = false;
+#if USB_DFU_DEBUG
                     memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
-                    usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
+#endif
+                    dfu_usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size);
                 }
                 /* This is a new download session (i.e. new file) */
-                //dfu_set_state(next_state);
                 break;
             }
         case DFUDNLOAD_IDLE:
@@ -630,7 +755,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->data_out_current_block_nb = 0;
                     dfu_ctx->block_in_progress = 0;
                     dfu_set_state(DFUMANIFEST_SYNC);
-                    usb_driver_setup_send_status(0);
+                    dfu_usb_driver_setup_send_status(0);
                 } else if (setup_packet->wLength > dfu_ctx->transfert_size) {
                     dfu_ctx->block_in_progress = 0;
                     goto size_too_big;
@@ -641,15 +766,14 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->data_out_length = setup_packet->wLength;
                     dfu_set_state(DFUDNLOAD_SYNC); /* We have data to dl */
                     dfu_ctx->block_in_progress = 1;
-                    usb_driver_setup_send_status(0);
+                    dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
+                    ready_for_data_receive = false;
 #if USB_DFU_DEBUG
                     printf("read %dB\n", dfu_ctx->block_size);
-                    ready_for_data_receive = false;
                     memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
 #endif
-                    usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size,0);
-
+                    dfu_usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size);
                 }
                 break;
             }
@@ -661,6 +785,7 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
     return;
 
 invalid_transition:
+    printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
     return;
 
@@ -705,7 +830,7 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->session_in_progress = 0;
                     dfu_set_state(DFUIDLE);
                     /* FIXME: should be botoom-halfed in main thread */
-                    usb_driver_setup_send_status(0);
+                    dfu_usb_driver_setup_send_status(0);
                 } else {
                     /* just stay in current state, managing upload */
                     if (setup_packet->wLength > dfu_ctx->transfert_size) {
@@ -775,8 +900,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bState = dfu_get_state();
                 status.iString = dfu_get_status_string_id();
 
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         case APPDETACH:
@@ -786,8 +911,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bState = dfu_get_state();
                 status.iString = dfu_get_status_string_id();
 
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUIDLE:
@@ -800,8 +925,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
                 status.iString = dfu_get_status_string_id();
 
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUDNLOAD_SYNC:
@@ -823,8 +948,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 /* if a previous DNLOAD is not yet finished, wait before
                  * reconfiguring the USB device 
                  */
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUDNLOAD_IDLE:
@@ -836,8 +961,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
                 status.iString = dfu_get_status_string_id();
 
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUMANIFEST_SYNC:
@@ -858,8 +983,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
                 status.iString = dfu_get_status_string_id();
 
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUUPLOAD_IDLE:
@@ -872,8 +997,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
                 status.iString = dfu_get_status_string_id();
 
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUERROR:
@@ -886,8 +1011,8 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
                 status.iString = dfu_get_status_string_id();
 
-                usb_driver_setup_send((void*)&status, sizeof(status),0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         default:
@@ -897,6 +1022,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
     return;
 
 invalid_transition:
+    printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
     return;
 }
@@ -918,10 +1044,11 @@ void dfu_request_clrstatus(struct usb_setup_packet *setup_packet)
     /* effective transition execution (if needed) */
     dfu_init_context();
     dfu_set_state(next_state);
-    usb_driver_setup_send_status(0);
+    dfu_usb_driver_setup_send_status(0);
     return;
 
 invalid_transition:
+    printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
     return;
 }
@@ -954,8 +1081,8 @@ void dfu_request_getstate(struct usb_setup_packet *setup_packet)
             {
                 uint8_t state = dfu_get_state();
 
-                usb_driver_setup_send((void*)&state, 1, 0);
-                usb_driver_setup_read_status();
+                dfu_usb_driver_setup_send((void*)&state, 1);
+                dfu_usb_driver_setup_read_status();
                 break;
             }
         default:
@@ -965,6 +1092,7 @@ void dfu_request_getstate(struct usb_setup_packet *setup_packet)
     return;
 
 invalid_transition:
+    printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
     return;
 }
@@ -994,7 +1122,7 @@ void dfu_request_abort(struct usb_setup_packet *setup_packet)
                 /* effective transition execution (if needed) */
                 dfu_init_context();
                 dfu_set_state(next_state);
-                usb_driver_setup_send_status(0);
+                dfu_usb_driver_setup_send_status(0);
                 break;
             }
         default:
@@ -1044,18 +1172,6 @@ typedef struct {
     struct usb_setup_packet  setup_packet;
 } request_queue_node_t;
 
-#if USB_DFU_DEBUG
-static const char *request_name[] = {
-    "USB_RQST_DFU_DETACH",
-    "USB_RQST_DFU_DNLOAD",
-    "USB_RQST_DFU_UPLOAD",
-    "USB_RQST_DFU_GET_STATUS",
-    "USB_RQST_DFU_CLEAR_STATUS",
-    "USB_RQST_DFU_GET_STATE",
-    "USB_RQST_DFU_ABORT"
-};
-#endif
-
 static volatile  request_queue_node_t *current_dfu_cmd = NULL;
 struct queue *dfu_cmd_queue = NULL;
 static volatile unsigned int dfu_cmd_queue_empty = 1;
@@ -1077,6 +1193,8 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     uint8_t ret;
     request_queue_node_t *cur_req = 0;
 
+    /* We have received a setup packet: we can release the USB read lock */
+    dfu_usb_read_in_progress = false;
     if (setup_packet->bRequest > USB_RQST_DFU_ABORT) {
 #if USB_DFU_DEBUG
         aprintf("dfu: %s: unknown request\n", __func__);
@@ -1087,7 +1205,7 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     /**/
 
 #if USB_DFU_DEBUG
-    aprintf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
+    aprintf("[handler mode] ENQUEUINQ => state %s, req %s\n", print_state_name(dfu_get_state()), print_request_name(setup_packet->bRequest));
 #endif
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
     if(ret){
@@ -1097,7 +1215,7 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     }
 
 #if USB_DFU_DEBUG
-    aprintf("req: %s\n", request_name[setup_packet->bRequest]);
+    aprintf("req: %s\n", print_request_name(setup_packet->bRequest));
 #endif
     cur_req->request = setup_packet->bRequest;
     memcpy((void*)&cur_req->setup_packet, setup_packet, sizeof(struct usb_setup_packet));
@@ -1213,7 +1331,7 @@ static void dfu_class_execute_request(void)
         case USB_RQST_DFU_DEBUG_GETSIZE:
 #endif
         default:
-            printf("dfu: %s: unknown request\n", __func__);
+            printf("dfu: %s: unknown request %d\n", __func__, current_dfu_cmd->setup_packet.bRequest);
             dfu_error(ERRUNKNOWN);
     }
     /* FIXME: current dfu cmd does not need to be global */
