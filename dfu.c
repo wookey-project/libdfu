@@ -537,7 +537,6 @@ static void dfu_release_block(dfu_data_block_t *b)
 
 static void dfu_functional_desc_request_handler(uint16_t wLength)
 {
-    //aprintf("functional desc requested, wlength=%d\n", wLength);
     if ( wLength == 0 ){
         dfu_usb_driver_setup_send_status(0);
         dfu_usb_driver_setup_read_status();
@@ -587,19 +586,11 @@ static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
  */
 static void dfu_store_data(void)
 {
-#if 0
-    printf("storing data..., state: %x\n", dfu_get_state());
-#endif
     if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
-#if 0
-        printf("Error! storing data in %d mode !", dfu_get_state());
-        dfu_ctx->data_out_current_block_nb += 1;
-        dfu_ctx->block_in_progress = 0;
-        dfu_ctx->poll_start = 0;
-        dfu_set_poll_timeout(0);
-        dfu_ctx->data_to_store = false;
-        dfu_error(ERRUNKNOWN);
-#endif
+        /* should not happend out of these two states. In that very case, 
+         * there is no block in progress as the automaton is not in download
+         * mode
+         */
         return;
     }
     if (dfu_ctx->cb_write) {
@@ -639,6 +630,9 @@ void dfu_store_finished(void)
  */
 void dfu_load_finished(void)
 {
+    /* Here we should send the data stored in the buffer by the app into
+     * the USB IP (upload mode) and then set block_in_progress as false
+     * when the */
     // TODO: this part has to be implemented
 }
 
@@ -732,7 +726,6 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     goto download_not_supported;
                 }
                 if (setup_packet->wLength > dfu_ctx->transfert_size) {
-                    dfu_ctx->block_in_progress = 0;
                     goto size_too_big;
                 } else {
                     /* dfu_ctx->data_out_current_block_nb;
@@ -766,11 +759,9 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
                     dfu_ctx->data_out_nb_blocks = 0;
                     dfu_ctx->data_out_length = 0;
                     dfu_ctx->data_out_current_block_nb = 0;
-                    dfu_ctx->block_in_progress = 0;
                     dfu_set_state(DFUMANIFEST_SYNC);
                     dfu_usb_driver_setup_send_status(0);
                 } else if (setup_packet->wLength > dfu_ctx->transfert_size) {
-                    dfu_ctx->block_in_progress = 0;
                     goto size_too_big;
                 } else {
                     /* dfu_ctx->data_out_current_block_nb;
@@ -1394,9 +1385,15 @@ static void dfu_data_in_handler(void)
 #if USB_DFU_DEBUG
     aprintf("end of USB read\n");
 #endif
+    /* USB IP write access is now finished */
     dfu_usb_write_in_progress = false;
-    if (dfu_ctx->block_in_progress == 1)
-    {
+
+    if (dfu_get_state() == DFUUPLOAD_IDLE) {
+        /* The write action on the USB output fifo is finished
+         * In DFUUPLOAD mode, this means that the flash data has
+         * been successfully pushed into the device and we can handle
+         * the next chunk
+         */
         dfu_ctx->block_in_progress = 0;
     }
 }
