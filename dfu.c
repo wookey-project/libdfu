@@ -9,7 +9,8 @@
 #include "usb_control.h"
 #include "queue.h"
 
-#define USB_DFU_DEBUG 0
+#define USB_DFU_DEBUG 1
+#define DFU_CAN_UPLOAD 1
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
@@ -161,6 +162,7 @@ typedef struct dfu_request_transition {
 } dfu_request_transition_t;
 
 volatile bool ready_for_data_receive = true;
+volatile bool ready_for_data_send    = true;
 
 
 /****************************************************************
@@ -379,7 +381,7 @@ static volatile dfu_functional_descriptor_t dfu_fct_desc = {
     .bDescriptorType = 0x21,
     .bmAttributes.bitWillDetach = 0,
     .bmAttributes.bitManifestationTolerant = 1,
-#ifdef DEBUG_LVL
+#if DFU_CAN_UPLOAD
     .bmAttributes.bitCanUpload = 1,
 #else
     .bmAttributes.bitCanUpload = 0,
@@ -576,7 +578,7 @@ static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
 
 
 /**********************************************
- * Storing data handler, mostly dependent on
+ * Storing and loading data handler, mostly dependent on
  * user layer callback/
  *********************************************/
 
@@ -586,6 +588,9 @@ static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
  */
 static void dfu_store_data(void)
 {
+    //uint16_t size = dfu_ctx->data_out_length;
+    //uint16_t blocknum = dfu_ctx->current_block_offset;
+
     if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
         /* should not happend out of these two states. In that very case, 
          * there is no block in progress as the automaton is not in download
@@ -602,6 +607,27 @@ static void dfu_store_data(void)
     dfu_ctx->data_to_store = false;
     return;
 }
+
+static void dfu_load_data(void)
+{
+    /* INFO: size is given by setup packet but the block number is not
+     * managed by the host, which only manage a file size */
+    if (dfu_get_state() != DFUUPLOAD_IDLE) {
+        /* should not happend out of these two states. In that very case, 
+         * there is no block in progress as the automaton is not in download
+         * mode
+         */
+        return;
+    }
+    if (dfu_ctx->cb_read) {
+        dfu_ctx->cb_read((uint8_t*)dfu_ctx->data_in_buffer, dfu_ctx->data_in_length);
+    }
+    // now set the write action as done
+    dfu_ctx->data_in_current_block_nb += 1;
+    /* store request sent, no more data to store by now */
+    return;
+}
+
 
 /*
  * This procedure is a *callback*. The DFU stack has no knowledge of
@@ -630,10 +656,11 @@ void dfu_store_finished(void)
  */
 void dfu_load_finished(void)
 {
+
     /* Here we should send the data stored in the buffer by the app into
      * the USB IP (upload mode) and then set block_in_progress as false
-     * when the */
-    // TODO: this part has to be implemented
+     */
+    dfu_usb_driver_setup_send(dfu_ctx->data_in_buffer, dfu_ctx->data_in_length);
 }
 
 
@@ -840,7 +867,16 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet)
                     if (setup_packet->wLength > dfu_ctx->transfert_size) {
                         goto size_too_big;
                     } else {
+                        dfu_ctx->data_in_nb_blocks = setup_packet->wValue;
+                        dfu_ctx->data_in_length = setup_packet->wLength;
+                        dfu_ctx->data_in_current_block_nb++;
+                        dfu_ctx->block_in_progress = 1;
+                        dfu_ctx->session_in_progress = 1;
+                        dfu_ctx->block_size = setup_packet->wLength;
                         read_firmware_data_cmd = 1;
+                        ready_for_data_send = false;
+                        printf("write %dB @%x\n", dfu_ctx->block_size, dfu_ctx->data_in_nb_blocks);
+                        dfu_load_data();
                     }
                 }
                 break;
@@ -850,9 +886,24 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet)
                 if (dfu_fct_desc.bmAttributes.bitCanUpload != 1)
                 {
                     goto upload_not_supported;
+                } else {
+                    /* just stay in current state, managing upload */
+                    if (setup_packet->wLength > dfu_ctx->transfert_size) {
+                        goto size_too_big;
+                    } else {
+                        dfu_ctx->data_in_nb_blocks = setup_packet->wValue;
+                        dfu_ctx->data_in_length = setup_packet->wLength;
+                        dfu_ctx->data_in_current_block_nb++;
+                        dfu_ctx->block_in_progress = 1;
+                        dfu_ctx->session_in_progress = 1;
+                        dfu_ctx->block_size = setup_packet->wLength;
+                        ready_for_data_send = false;
+                        dfu_set_state(next_state);
+                        /* FIXME block number & size are needed */
+                        printf("write %dB @%x\n", dfu_ctx->block_size, dfu_ctx->data_in_nb_blocks);
+                        dfu_load_data();
+                    }
                 }
-                dfu_ctx->session_in_progress = 1;
-                dfu_set_state(next_state);
                 break;
             }
         default:
@@ -1395,6 +1446,8 @@ static void dfu_data_in_handler(void)
          * the next chunk
          */
         dfu_ctx->block_in_progress = 0;
+        dfu_ctx->poll_start = 0;
+        dfu_set_poll_timeout(0);
     }
 }
 
@@ -1417,6 +1470,7 @@ void dfu_exec_automaton(void)
          */
         dfu_store_data();
     }
+
 #if USB_DFU_DEBUG
     aprintf_flush();
 #endif
@@ -1464,6 +1518,7 @@ void dfu_init_context(void)
     dfu_context.cb_read = read_cb;
     dfu_context.cb_write = write_cb;
     dfu_context.data_to_store = false;
+    dfu_context.data_to_load  = false;
 }
 
 

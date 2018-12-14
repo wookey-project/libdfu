@@ -138,6 +138,7 @@ typedef struct  {
     dfu_read_block_cb_t   cb_read;
     dfu_write_block_cb_t  cb_write;
     bool                  data_to_store;
+    bool                  data_to_load;
     //uint32_t data_out_buffer_index;
     //uint32_t data_in_buffer_index;
 } dfu_context_t;
