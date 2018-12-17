@@ -10,7 +10,6 @@
 #include "queue.h"
 
 #define USB_DFU_DEBUG 0
-#define DFU_CAN_UPLOAD 1
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
@@ -102,6 +101,13 @@ void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 	usb_driver_setup_send(src, size, 0);
 	return;
 }
+
+void dfu_usb_driver_setup_send_zlp(void){
+    dfu_usb_driver_setup_send(0,0);
+	dfu_usb_write_in_progress = false;
+}
+
+
 
 
 /********************************************/
@@ -381,7 +387,7 @@ static volatile dfu_functional_descriptor_t dfu_fct_desc = {
     .bDescriptorType = 0x21,
     .bmAttributes.bitWillDetach = 0,
     .bmAttributes.bitManifestationTolerant = 1,
-#if DFU_CAN_UPLOAD
+#if CONFIG_USR_LIB_DFU_CAN_UPLOAD
     .bmAttributes.bitCanUpload = 1,
 #else
     .bmAttributes.bitCanUpload = 0,
@@ -599,7 +605,7 @@ static void dfu_store_data(void)
         return;
     }
     if (dfu_ctx->cb_write) {
-        dfu_ctx->cb_write(dfu_ctx->data_out_buffer, dfu_ctx->data_out_length);
+        dfu_ctx->cb_write(dfu_ctx->data_out_buffer, dfu_ctx->data_out_length, dfu_ctx->data_out_nb_blocks);
     }
     // now set the write action as done
     dfu_ctx->data_out_current_block_nb += 1;
@@ -654,13 +660,33 @@ void dfu_store_finished(void)
  * the DFU stack that its buffer has been fullfill with the firware chunk content and
  * can now be sent to the host.
  */
-void dfu_load_finished(void)
+void dfu_load_finished(uint16_t bytes_read)
 {
 
     /* Here we should send the data stored in the buffer by the app into
      * the USB IP (upload mode) and then set block_in_progress as false
+     * INFO:
+     * The data sent is the number of effective read data, not the requested bytes
+     * number. This is due to the end of upload mechanism which is based on the
+     * detection on the received wLength value (from the host). When wLength is
+     * smaller than the one requested, the host considering that the upload is
+     * finished. bytes_read here is given by the DFU handling application depending
+     * on the number of bytes read for this chunk by the storage backend.
      */
-    dfu_usb_driver_setup_send(dfu_ctx->data_in_buffer, dfu_ctx->data_in_length);
+    dfu_usb_driver_setup_send(dfu_ctx->data_in_buffer, bytes_read);
+    if (bytes_read < dfu_ctx->data_in_length) {
+        if ((bytes_read % 64) == 0) {
+            /* Inform the host through sending a zlp packet that upload is finished */
+            dfu_usb_driver_setup_send_zlp();
+        }
+        /* End of data read, going back to dfu_idle */
+        dfu_ctx->data_in_nb_blocks = 0;
+        dfu_ctx->data_in_length = 0;
+        dfu_ctx->data_in_current_block_nb = 0;
+        dfu_ctx->block_in_progress = 0;
+        dfu_ctx->session_in_progress = 0;
+        dfu_set_state(DFUIDLE);
+    }
 }
 
 
@@ -875,7 +901,9 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet)
                         dfu_ctx->block_size = setup_packet->wLength;
                         read_firmware_data_cmd = 1;
                         ready_for_data_send = false;
+#if USB_DFU_DEBUG
                         printf("write %dB @%x\n", dfu_ctx->block_size, dfu_ctx->data_in_nb_blocks);
+#endif
                         dfu_load_data();
                     }
                 }
@@ -893,14 +921,15 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet)
                     } else {
                         dfu_ctx->data_in_nb_blocks = setup_packet->wValue;
                         dfu_ctx->data_in_length = setup_packet->wLength;
-                        dfu_ctx->data_in_current_block_nb++;
                         dfu_ctx->block_in_progress = 1;
                         dfu_ctx->session_in_progress = 1;
                         dfu_ctx->block_size = setup_packet->wLength;
                         ready_for_data_send = false;
                         dfu_set_state(next_state);
                         /* FIXME block number & size are needed */
+#if USB_DFU_DEBUG
                         printf("write %dB @%x\n", dfu_ctx->block_size, dfu_ctx->data_in_nb_blocks);
+#endif
                         dfu_load_data();
                     }
                 }

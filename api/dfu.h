@@ -13,8 +13,12 @@
 /*
  * Task callback, executed at the end of a data transfer reception,
  * to decide what to do with these data.
+ * @param datat     he buffer address on which the data should be written from,
+ *                  to the storage backend
+ * @param data_size the amount of data to write
+ * @param blocknum  the current chunk number, given by the host
  */
-typedef uint8_t (*dfu_write_block_cb_t)(uint8_t ** volatile data, uint16_t size);
+typedef uint8_t (*dfu_write_block_cb_t)(uint8_t ** volatile data, uint16_t size, uint16_t blocknum);
 
 /*
  * Task callback, executed at the begining of a data upload request
@@ -72,6 +76,6 @@ void dfu_store_finished(void);
  * The loading backend has finished to load data ? This function inform the
  * DFU that it can send the buffer content into the USB device output FIFO
  */
-void dfu_load_finished(void);
+void dfu_load_finished(uint16_t bytes_read);
 
 #endif
