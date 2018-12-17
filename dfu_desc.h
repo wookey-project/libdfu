@@ -4,6 +4,7 @@
 #ifndef _DFU_DESC_H
 #define _DFU_DESC_H
 
+#include "autoconf.h"
 #include "usb_control.h"
 #include "usb_device.h"
 
@@ -80,8 +81,16 @@ static usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
         .bmAttributes.reserved = 0,
 	.bmAttributes.bitWillDetach = 0,
 	.bmAttributes.bitManifestationTolerant = 0,
+#if USR_LIB_DFU_CAN_UPLOAD
 	.bmAttributes.bitCanUpload = 1,
+#else
+	.bmAttributes.bitCanUpload = 0,
+#endif
+#if USR_LIB_DFU_CAN_DOWNLOAD
 	.bmAttributes.bitCanDnload = 1,
+#else
+	.bmAttributes.bitCanDnload = 0,
+#endif
 	/* 1 second timeout */
 	.wDetachTimeOut = 1000,
 	/* Big transfer size chunks */

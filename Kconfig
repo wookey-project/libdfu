@@ -8,4 +8,30 @@ config USR_LIB_DFU_CFLAGS
   string
   default " -I../../libs/dfu/api " if USR_LIB_DFU
 
+if USR_LIB_DFU
 
+menu "DFU-Related Features"
+
+config USR_LIB_DFU_CAN_UPLOAD
+  bool "Support for DFU Upload mode"
+  default n
+  ---help---
+  Support for DFU Upload mode of the DFU automaton. The host is
+  able to request firmware upload from the device and get back the
+  device firmware content.
+  WARNING: this feature is a standard DFU function but generates a
+  security breach. Activate it only if you know what you do.
+
+config USR_LIB_DFU_CAN_DOWNLOAD
+  bool "Support for DFU Download mode"
+  default y
+  ---help---
+  Support for DFU Download mode of the DFU automaton. The host is
+  able to flash the device firmware through DFU with a new firmware
+  image. This option allows the DFU automaton to accept DFU download
+  requests but is not responsible for correct firmware image handling
+  (new firmware authentication, integrity, and so on).
+
+endmenu
+
+endif
