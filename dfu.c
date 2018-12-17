@@ -9,7 +9,7 @@
 #include "usb_control.h"
 #include "queue.h"
 
-#define USB_DFU_DEBUG 1
+#define USB_DFU_DEBUG 0
 #define DFU_CAN_UPLOAD 1
 
 /* FIXME: should be get back from USB driver */
@@ -1434,7 +1434,7 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
 static void dfu_data_in_handler(void)
 {
 #if USB_DFU_DEBUG
-    aprintf("end of USB read\n");
+    aprintf("end of USB write\n");
 #endif
     /* USB IP write access is now finished */
     dfu_usb_write_in_progress = false;
