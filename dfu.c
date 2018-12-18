@@ -1408,15 +1408,6 @@ static void dfu_class_execute_request(void)
             dfu_request_abort((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
             break;
 
-#ifdef DEBUG_LVL // FIXME We should implement these features
-        case USB_RQST_DFU_DEBUG_CHKSIGN:
-        case USB_RQST_DFU_DEBUG_DECRYPT:
-        case USB_RQST_DFU_DEBUG_CRYPT:
-
-        case USB_RQST_DFU_DEBUG_GETADDR:
-        case USB_RQST_DFU_DEBUG_SETSIZE:
-        case USB_RQST_DFU_DEBUG_GETSIZE:
-#endif
         default:
             printf("dfu: %s: unknown request %d\n", __func__, current_dfu_cmd->setup_packet.bRequest);
             dfu_error(ERRUNKNOWN);
