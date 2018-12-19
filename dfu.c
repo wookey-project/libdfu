@@ -13,6 +13,7 @@
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
+#define MAX_POLL_TIMEOUT_TOLERANCE 10
 
 /* FIXME dummy */
 uint8_t read_firmware_data_cmd = 0;
@@ -230,7 +231,17 @@ static const struct {
                              }
     },
     { DFUDNBUSY,             {
-                                 {0xff,0xff}, /* leave only on timeout */
+                                 {USB_RQST_DFU_GET_STATUS,0xff},
+                                 /* leave only on timeout, although:
+                                  * timeout calculation is not accurate enough
+                                  * tu avoid potential races with the host during
+                                  * which a get_status() is performed just before
+                                  * going back to DNLOAD_SYNC state.
+                                  * For this particular case, we tolerate a short
+                                  * temporal window at the end of the timeout in which
+                                  * a get_status event can be received, if the timeout
+                                  * is (ms-accurate) reached.
+                                  */
                                  {0xff,0xff},
                                  {0xff,0xff},
                                  {0xff,0xff},
@@ -333,6 +344,7 @@ static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
      * Didn't find any request associated to current state. This is not a
      * valid transition. We should fallback to DFUERROR state.
      */
+    printf("invalid transition from state %d, request %d\n", current_state, request);
     return false;
 }
 
@@ -1036,6 +1048,43 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
                 dfu_usb_driver_setup_read_status();
                 break;
             }
+        case DFUDNBUSY:
+            {
+                uint64_t ms;
+                uint8_t ret;
+                ret = sys_get_systick(&ms, PREC_MILLI);
+                /* we are tolerant as we consider that:
+                 * the current ms calculation is equal to the moment when
+                 * the IRQ associated to the get_status event. In reality,
+                 * ms is calculated later and ms - poll_start is bigger */
+                if ((ms - dfu_ctx->poll_start) < dfu_ctx->poll_timeout_ms) {
+                    /* clearly, get_status arise *before* end of timeout !
+                     * this is a violation of the DFU automaton */
+                    goto invalid_transition;
+                }
+                if (dfu_ctx->block_in_progress == 1) {
+                    /* Block transfert still in progress, in that case,
+                     * we reload the timeout and stay in DFNBUSY */
+                    dfu_set_poll_timeout(MAX_POLL_TIMEOUT);
+                } else {
+                    dfu_set_poll_timeout(0);
+                    dfu_set_state(DFUDNLOAD_IDLE);
+                }
+                status.bStatus = dfu_get_status();
+                status.bState = dfu_get_state();
+                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.iString = dfu_get_status_string_id();
+
+                /* if a previous DNLOAD is not yet finished, wait before
+                 * reconfiguring the USB device 
+                 */
+                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_read_status();
+                break;
+            }
+
         case DFUDNLOAD_IDLE:
             {
                 status.bStatus = dfu_get_status();
