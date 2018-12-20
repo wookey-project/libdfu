@@ -15,6 +15,18 @@
 #define MAX_TIME_DETACH     4000
 #define MAX_POLL_TIMEOUT_TOLERANCE 10
 
+/*
+ * The DFU stack context. This is a global variable, which means
+ * that the DFU stack is not reentrant (not for dfu_context write access).
+ * As most micro-controlers are not multicore based, this should not be
+ * a problem.
+ */
+static volatile dfu_context_t dfu_context = {0};
+
+static volatile dfu_context_t * const dfu_ctx = &dfu_context;
+
+
+
 /* FIXME dummy */
 uint8_t read_firmware_data_cmd = 0;
 uint8_t read_firmware_data_done = 0;
@@ -298,6 +310,69 @@ static const struct {
     },
 };
 
+/**********************************************
+ * DFU getters and setters
+ *********************************************/
+
+uint32_t dfu_get_poll_timeout(void){
+    return dfu_ctx->poll_timeout_ms;
+}
+
+
+static inline uint8_t dfu_get_state() {
+    return dfu_ctx->state;
+}
+
+static inline uint8_t dfu_get_status() {
+    return dfu_ctx->status;
+}
+
+uint8_t dfu_get_status_string_id() {
+    // TODO
+    return 0;
+}
+
+static inline void dfu_set_status(const dfu_status_enum_t new_status) {
+    dfu_ctx->status = new_status;
+}
+
+
+static inline void dfu_set_state(const uint8_t new_state)
+{
+    if (new_state == 0xff) {
+        printf("PANIC! this should never arrise !");
+        while (1) {};
+        return;
+    }
+#if USB_DFU_DEBUG
+    printf("state: %x => %x\n", dfu_ctx->state, new_state);
+#endif
+    dfu_ctx->state = new_state;
+}
+
+void dfu_set_poll_timeout(uint32_t t)
+{
+
+    uint64_t ms;
+    uint8_t ret;
+
+#if USB_DFU_DEBUG
+    printf("setting poll_timeout_ms to %d\n", t);
+#endif
+    dfu_ctx->poll_timeout_ms = t;
+    ret = sys_get_systick(&ms, PREC_MILLI);
+    if (ret != SYS_E_DONE) {
+        printf("Error: unable to get systick value !\n");
+    }
+    dfu_ctx->poll_start = ms;
+
+}
+
+/******************************************************
+ * DFU automaton management function (transition and
+ * state check)
+ *****************************************************/
+
 /*!
  * \brief return the next automaton state
  *
@@ -345,6 +420,7 @@ static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
      * valid transition. We should fallback to DFUERROR state.
      */
     printf("invalid transition from state %d, request %d\n", current_state, request);
+    dfu_set_state(DFUERROR);
     return false;
 }
 
@@ -410,80 +486,12 @@ static volatile dfu_functional_descriptor_t dfu_fct_desc = {
     .bcdDFUVersion = 0x0101
 };
 
-/*
- * The DFU stack context. This is a global variable, which means
- * that the DFU stack is not reentrant (not for dfu_context write access).
- * As most micro-controlers are not multicore based, this should not be
- * a problem.
- */
-static volatile dfu_context_t dfu_context = {0};
-
-static volatile dfu_context_t * const dfu_ctx = &dfu_context;
-
 
 typedef struct {
     uint16_t id;
     uint32_t size;
     uint8_t * data;
 } dfu_data_block_t;
-
-/**********************************************
- * DFU getters and setters
- *********************************************/
-
-uint32_t dfu_get_poll_timeout(void){
-    return dfu_ctx->poll_timeout_ms;
-}
-
-
-static inline uint8_t dfu_get_state() {
-    return dfu_ctx->state;
-}
-
-static inline uint8_t dfu_get_status() {
-    return dfu_ctx->status;
-}
-
-uint8_t dfu_get_status_string_id() {
-    // TODO
-    return 0;
-}
-
-static inline void dfu_set_status(const dfu_status_enum_t new_status) {
-    dfu_ctx->status = new_status;
-}
-
-
-static inline void dfu_set_state(const uint8_t new_state)
-{
-    if (new_state == 0xff) {
-        printf("PANIC! this should never arrise !");
-        while (1) {};
-        return;
-    }
-#if USB_DFU_DEBUG
-    printf("state: %x => %x\n", dfu_ctx->state, new_state);
-#endif
-    dfu_ctx->state = new_state;
-}
-
-void dfu_set_poll_timeout(uint32_t t)
-{
-
-    uint64_t ms;
-    uint8_t ret;
-
-#if USB_DFU_DEBUG
-    printf("setting poll_timeout_ms to %d\n", t);
-#endif
-    dfu_ctx->poll_timeout_ms = t;
-    ret = sys_get_systick(&ms, PREC_MILLI);
-    if (ret != SYS_E_DONE) {
-        printf("Error: unable to get systick value !\n");
-    }
-    dfu_ctx->poll_start = ms;
-
-}
 
 
 /**********************************************
