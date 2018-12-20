@@ -15,6 +15,7 @@
 #define USB_SUBCLASS_DFU		0x01
 #define USB_PROTOCOL_DFU_RTM	0x01
 #define USB_PROTOCOL_DFU_DFU	0x02
+#define DFU_DETACH_TIMEOUT      1000 /* in miliseconds */
 
 /**
  * \brief Device descriptor
@@ -91,8 +92,7 @@ static usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
 #else
 	.bmAttributes.bitCanDnload = 0,
 #endif
-	/* 1 second timeout */
-	.wDetachTimeOut = 1000,
+	.wDetachTimeOut = DFU_DETACH_TIMEOUT,
 	/* Big transfer size chunks */
 	.wTransferSize = 0, /* Updated during dfu_init() */
 	/* DFU 1.1 */

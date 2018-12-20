@@ -13,7 +13,6 @@
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
-#define MAX_POLL_TIMEOUT_TOLERANCE 10
 
 /*
  * The DFU stack context. This is a global variable, which means
