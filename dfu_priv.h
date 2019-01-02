@@ -42,7 +42,7 @@ typedef struct __packed {
 
 #define DFU_QUEUE_MAX_SIZE 10
 #define DFU_DATA_QUEUE_MAX_SIZE 10
-#define MAX_POLL_TIMEOUT 50
+#define MAX_POLL_TIMEOUT 150
 
 typedef enum dfu_request {
  USB_RQST_DFU_DETACH             =  0x00,
