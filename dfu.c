@@ -11,6 +11,8 @@
 
 #define USB_DFU_DEBUG 0
 
+extern uint32_t errno;
+
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
 
@@ -349,7 +351,7 @@ static inline void dfu_set_state(const uint8_t new_state)
     dfu_ctx->state = new_state;
 }
 
-void dfu_set_poll_timeout(uint32_t t)
+void dfu_set_poll_timeout(uint32_t t, uint64_t timestamp)
 {
 
     uint64_t ms;
@@ -363,8 +365,7 @@ void dfu_set_poll_timeout(uint32_t t)
     if (ret != SYS_E_DONE) {
         printf("Error: unable to get systick value !\n");
     }
-    dfu_ctx->poll_start = ms;
-
+    dfu_ctx->poll_start = timestamp;
 }
 
 /******************************************************
@@ -543,19 +544,17 @@ static inline void dfu_error(const dfu_status_enum_t new_status)
 static void dfu_release_block(dfu_data_block_t *b)
 {
     if(b != NULL){
+        enter_critical_section();
         if(b->data != NULL){
 #ifdef CONFIG_STD_MALLOC_LIGHT
-            enter_critical_section();
             wfree((void**)&b->data);
-            leave_critical_section();
 #endif
         }
 
 #ifdef CONFIG_STD_MALLOC_LIGHT
-        enter_critical_section();
         wfree((void**)&b);
-        leave_critical_section();
 #endif
+        leave_critical_section();
     }
     b = NULL;
 }
@@ -671,7 +670,7 @@ void dfu_store_finished(void)
     */
     dfu_ctx->block_in_progress = 0;
     dfu_ctx->poll_start = 0;
-    dfu_set_poll_timeout(0);
+    dfu_set_poll_timeout(0, 0);
 }
 
 /*
@@ -982,7 +981,7 @@ size_too_big:
 /*
  * Handle DFU_GETSTATUS event
  */
-void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
+void dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t timestamp)
 {
     /* Sanity check and next state detection */
     uint8_t next_state;
@@ -1036,7 +1035,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
             {
                 if (dfu_ctx->block_in_progress == 1) {
                     /* Block transfert still in progress */
-                    dfu_set_poll_timeout(MAX_POLL_TIMEOUT);
+                    dfu_set_poll_timeout(MAX_POLL_TIMEOUT, timestamp);
                     dfu_set_state(DFUDNBUSY);
                 } else {
                     dfu_set_state(DFUDNLOAD_IDLE);
@@ -1057,24 +1056,36 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet)
             }
         case DFUDNBUSY:
             {
-                uint64_t ms;
-                uint8_t ret;
-                ret = sys_get_systick(&ms, PREC_MILLI);
+                uint16_t tolerent_time = 4;
                 /* we are tolerant as we consider that:
                  * the current ms calculation is equal to the moment when
-                 * the IRQ associated to the get_status event. In reality,
-                 * ms is calculated later and ms - poll_start is bigger */
-                if ((ms - dfu_ctx->poll_start) < dfu_ctx->poll_timeout_ms) {
+                 * the ISR associated to the get_status event. In reality,
+                 * both timestmap and poll_start are calculated a little
+                 * later after the IRQ (they are calculated in the ISR context
+                 * wish is postponed). As a consequence, if the timestamp
+                 * calulcation is less late than the poll_start calculation,
+                 * the difference may be shorter than the IRQ period.
+                 * To avoid this, we include a tolerent time (in ms) to the
+                 * calculation. This permit to support ISR execution gigue on
+                 * highly loaded microcontrolers.
+                 */
+                if ((timestamp - dfu_ctx->poll_start + tolerent_time) < dfu_ctx->poll_timeout_ms) {
                     /* clearly, get_status arise *before* end of timeout !
                      * this is a violation of the DFU automaton */
+                    uint32_t ts_low = (uint32_t)timestamp;
+                    uint32_t ts_high = (uint32_t)(timestamp >> 32);
+                    uint32_t ps_low = (uint32_t)dfu_ctx->poll_start;
+                    uint32_t ps_high = (uint32_t)(dfu_ctx->poll_start >> 32);
+                    uint32_t pt = (uint32_t)dfu_ctx->poll_timeout_ms;
+                    printf("error: ts: %x%x ; ps: %x%x pt: %x\n", ts_high, ts_low, ps_high, ps_low, pt);
                     goto invalid_transition;
                 }
                 if (dfu_ctx->block_in_progress == 1) {
                     /* Block transfert still in progress, in that case,
                      * we reload the timeout and stay in DFNBUSY */
-                    dfu_set_poll_timeout(MAX_POLL_TIMEOUT);
+                    dfu_set_poll_timeout(MAX_POLL_TIMEOUT, timestamp);
                 } else {
-                    dfu_set_poll_timeout(0);
+                    dfu_set_poll_timeout(0, 0);
                     dfu_set_state(DFUDNLOAD_IDLE);
                 }
                 status.bStatus = dfu_get_status();
@@ -1308,7 +1319,9 @@ invalid_transition:
  * request node, to be enqueue in handler mode, dequeue in
  * main thread
  */
-typedef struct {
+typedef struct __attribute__((packed)) {
+    uint16_t garbage; /* FIXME 64bytes aligned due to gcc bug in strd usage */
+    uint64_t                 timestamp;
     dfu_request_t            request;
     struct usb_setup_packet  setup_packet;
 } request_queue_node_t;
@@ -1332,6 +1345,13 @@ static volatile unsigned int dfu_cmd_queue_empty = 1;
 static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
 {
     uint8_t ret;
+    uint64_t ms;
+
+    ret = sys_get_systick(&ms, PREC_MILLI);
+    if (ret != SYS_E_DONE) {
+        aprintf("timestamping error\n");
+        return;
+    }
     request_queue_node_t *cur_req = 0;
 
     /* We have received a setup packet: we can release the USB read lock */
@@ -1359,6 +1379,7 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     aprintf("req: %s\n", print_request_name(setup_packet->bRequest));
 #endif
     cur_req->request = setup_packet->bRequest;
+    cur_req->timestamp = ms;
     memcpy((void*)&cur_req->setup_packet, setup_packet, sizeof(struct usb_setup_packet));
     queue_enqueue(dfu_cmd_queue, cur_req);
     dfu_cmd_queue_empty = 0;
@@ -1379,6 +1400,7 @@ static void dfu_release_current_dfu_cmd(void)
     if (current_dfu_cmd != NULL) {
         enter_critical_section();
         if (wfree((void**)&current_dfu_cmd)) {
+            printf("freeing current command failed with errno %d\n", errno);
             dfu_error(ERRUNKNOWN);
         }
         leave_critical_section();
@@ -1440,7 +1462,7 @@ static void dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATUS\n");
 #endif
-            dfu_request_getstatus((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
+            dfu_request_getstatus((struct usb_setup_packet*)&current_dfu_cmd->setup_packet, current_dfu_cmd->timestamp);
             break;
 
         case USB_RQST_DFU_CLEAR_STATUS:
@@ -1523,7 +1545,7 @@ static void dfu_data_in_handler(void)
          */
         dfu_ctx->block_in_progress = 0;
         dfu_ctx->poll_start = 0;
-        dfu_set_poll_timeout(0);
+        dfu_set_poll_timeout(0, 0);
     }
 }
 
