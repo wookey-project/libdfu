@@ -10,6 +10,27 @@
 
 #define MAX_DFU_CMD_QUEUE_SIZE 8
 
+typedef enum dfu_status_enum {
+    OK              = 0x00,
+    ERRTARGET       = 0x01,
+    ERRFILE         = 0x02,
+    ERRWRITE        = 0x03,
+    ERRERASE        = 0x04,
+    ERRCHECK_ERASED	= 0x05,
+    ERRPROG         = 0x06,
+    ERRVERIFY       = 0x07,
+    ERRADDRESS      = 0x08,
+    ERRNOTDONE      = 0x09,
+    ERRFIRMWARE     = 0x0A,
+    ERRVENDOR       = 0x0B,
+    ERRUSBR         = 0x0C,
+    ERRPOR          = 0x0D,
+    ERRUNKNOWN      = 0x0E,
+    ERRSTALLEDPKT   = 0x0F,
+} dfu_status_enum_t;
+
+void dfu_leave_session_with_error(const dfu_status_enum_t new_status);
+
 /*
  * Task callback, executed at the end of a data transfer reception,
  * to decide what to do with these data.
@@ -27,6 +48,7 @@ typedef uint8_t (*dfu_write_block_cb_t)(uint8_t ** volatile data, uint16_t size,
  */
 typedef uint8_t (*dfu_read_block_cb_t)(uint8_t *data, uint16_t size);
 
+typedef void (*dfu_eof_cb_t)(void);
 
 /*
  * Early initialization, declaring the DFU stack. This include the USB
@@ -44,11 +66,14 @@ void dfu_early_init(void);
  *                 stored
  * @param read_cb  the callback executed when an input data is requested from
  *                 the DFU stack (in upload mode)
+ * @param eof_cb   the callback executed when the download (or upload) session
+ *                 has terminated without error.
  * @param buffer   the data buffer to use for storing data from/to USB FIFO
  * @param max_size the buffer size, at least 64, must be a power of 2.
  */
 void dfu_init(dfu_write_block_cb_t write_cb,
               dfu_read_block_cb_t  read_cb,
+              dfu_eof_cb_t         eof_cb,
               uint8_t **buffer,
               uint16_t max_size);
 

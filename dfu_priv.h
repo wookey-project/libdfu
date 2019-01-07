@@ -65,24 +65,6 @@ typedef enum dfu_request {
 
 
 
-typedef enum dfu_status_enum {
-    OK              = 0x00,
-    ERRTARGET       = 0x01,
-    ERRFILE         = 0x02,
-    ERRWRITE        = 0x03,
-    ERRERASE        = 0x04,
-    ERRCHECK_ERASED	= 0x05,
-    ERRPROG         = 0x06,
-    ERRVERIFY       = 0x07,
-    ERRADDRESS      = 0x08,
-    ERRNOTDONE      = 0x09,
-    ERRFIRMWARE     = 0x0A,
-    ERRVENDOR       = 0x0B,
-    ERRUSBR         = 0x0C,
-    ERRPOR          = 0x0D,
-    ERRUNKNOWN      = 0x0E,
-    ERRSTALLEDPKT   = 0x0F,
-} dfu_status_enum_t;
 
 typedef enum dfu_state_enum {
     APPIDLE                 = 0x00,
@@ -137,6 +119,7 @@ typedef struct  {
     uint32_t              current_block_offset;
     dfu_read_block_cb_t   cb_read;
     dfu_write_block_cb_t  cb_write;
+    dfu_eof_cb_t          cb_eof;
     bool                  data_to_store;
     bool                  data_to_load;
     //uint32_t data_out_buffer_index;
