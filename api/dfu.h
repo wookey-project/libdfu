@@ -10,6 +10,11 @@
 
 #define MAX_DFU_CMD_QUEUE_SIZE 8
 
+/* Maximum poll timeout for the host to send get_status()
+ * requests (in milliseconds).
+ */
+#define MAX_POLL_TIMEOUT 300
+
 typedef enum dfu_status_enum {
     OK              = 0x00,
     ERRTARGET       = 0x01,
