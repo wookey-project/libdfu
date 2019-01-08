@@ -11,8 +11,8 @@
 /* Classes, subclasses and protocols for DFU Runtime */
 #define USB_NB_INTERFACE        1
 
-#define USB_CLASS_DFU			0xFE
-#define USB_SUBCLASS_DFU		0x01
+#define USB_CLASS_DFU		0xFE
+#define USB_SUBCLASS_DFU	0x01
 #define USB_PROTOCOL_DFU_RTM	0x01
 #define USB_PROTOCOL_DFU_DFU	0x02
 #define DFU_DETACH_TIMEOUT      1000 /* in miliseconds */

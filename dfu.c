@@ -543,8 +543,8 @@ static inline void dfu_error(const dfu_status_enum_t new_status)
 
 static void dfu_release_block(dfu_data_block_t *b)
 {
+    enter_critical_section();
     if(b != NULL){
-        enter_critical_section();
         if(b->data != NULL){
 #ifdef CONFIG_STD_MALLOC_LIGHT
             wfree((void**)&b->data);
@@ -554,9 +554,9 @@ static void dfu_release_block(dfu_data_block_t *b)
 #ifdef CONFIG_STD_MALLOC_LIGHT
         wfree((void**)&b);
 #endif
-        leave_critical_section();
     }
     b = NULL;
+    leave_critical_section();
 }
 
 
@@ -1341,7 +1341,6 @@ typedef struct __attribute__((packed)) {
     struct usb_setup_packet  setup_packet;
 } request_queue_node_t;
 
-static volatile  request_queue_node_t *current_dfu_cmd = NULL;
 struct queue *dfu_cmd_queue = NULL;
 static volatile unsigned int dfu_cmd_queue_empty = 1;
 
@@ -1367,7 +1366,7 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
         aprintf("timestamping error\n");
         return;
     }
-    request_queue_node_t *cur_req = 0;
+    request_queue_node_t *cur_req = NULL;
 
     /* We have received a setup packet: we can release the USB read lock */
     dfu_usb_read_in_progress = false;
@@ -1410,21 +1409,17 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
  * Utility function use by the DFU automaton to release DFU
  * commands which have been dequeued and executed.
  */
-static void dfu_release_current_dfu_cmd(void)
+static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
 {
-    if (current_dfu_cmd != NULL) {
-        enter_critical_section();
-        if (wfree((void**)&current_dfu_cmd)) {
+    if (*current_dfu_cmd != NULL) {
+        if (wfree((void**)current_dfu_cmd)) {
             printf("freeing current command failed with errno %d\n", errno);
             dfu_error(ERRUNKNOWN);
         }
-        leave_critical_section();
     }
-    current_dfu_cmd = NULL;
+    *current_dfu_cmd = NULL;
     return;
 }
-
-
 
 
 /******************************************************
@@ -1436,12 +1431,16 @@ static void dfu_release_current_dfu_cmd(void)
  *****************************************************/
 static void dfu_class_execute_request(void)
 {
+    request_queue_node_t *current_dfu_cmd_p = NULL;
+    request_queue_node_t current_dfu_cmd;
     if(dfu_cmd_queue_empty == 1)
     {
         return;
     }
     enter_critical_section();
-    current_dfu_cmd = queue_dequeue(dfu_cmd_queue);
+    current_dfu_cmd_p = queue_dequeue(dfu_cmd_queue);
+    current_dfu_cmd = *current_dfu_cmd_p;
+    dfu_release_current_dfu_cmd(&current_dfu_cmd_p);
     if(queue_is_empty(dfu_cmd_queue)) {
         dfu_cmd_queue_empty = 1;
     }
@@ -1451,66 +1450,64 @@ static void dfu_class_execute_request(void)
     dfu_state_enum_t old_state, new_state;
     old_state = dfu_get_state();
 #endif
-    switch( current_dfu_cmd->setup_packet.bRequest ) {
+    switch( current_dfu_cmd.setup_packet.bRequest ) {
         case USB_RQST_DFU_DETACH:
 #if USB_DFU_DEBUG
             printf("DFU_DETACH\n");
 #endif
-            dfu_request_detach((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
+            dfu_request_detach((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
             break;
 
         case USB_RQST_DFU_DNLOAD:
 #if USB_DFU_DEBUG
             printf("DFU_DNLOAD\n");
 #endif
-            dfu_request_dnload((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
+            dfu_request_dnload((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
             break;
 
         case USB_RQST_DFU_UPLOAD:
 #if USB_DFU_DEBUG
             printf("DFU_UPLOAD\n");
 #endif
-            dfu_request_upload((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
+            dfu_request_upload((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
             break;
 
         case USB_RQST_DFU_GET_STATUS:
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATUS\n");
 #endif
-            dfu_request_getstatus((struct usb_setup_packet*)&current_dfu_cmd->setup_packet, current_dfu_cmd->timestamp);
+            dfu_request_getstatus((struct usb_setup_packet*)&current_dfu_cmd.setup_packet, current_dfu_cmd.timestamp);
             break;
 
         case USB_RQST_DFU_CLEAR_STATUS:
 #if USB_DFU_DEBUG
             printf("DFU_CLEAR_STATUS\n");
 #endif
-            dfu_request_clrstatus((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
+            dfu_request_clrstatus((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
             break;
 
         case USB_RQST_DFU_GET_STATE:
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATE\n");
 #endif
-            dfu_request_getstate((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
+            dfu_request_getstate((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
             break;
 
         case USB_RQST_DFU_ABORT:
 #if USB_DFU_DEBUG
             printf("DFU_GET_ABORT\n");
 #endif
-            dfu_request_abort((struct usb_setup_packet*)&current_dfu_cmd->setup_packet);
+            dfu_request_abort((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
             break;
 
         default:
-            printf("dfu: %s: unknown request %d\n", __func__, current_dfu_cmd->setup_packet.bRequest);
+            printf("dfu: %s: unknown request %d\n", __func__, current_dfu_cmd.setup_packet.bRequest);
             dfu_error(ERRUNKNOWN);
     }
 #if USB_DFU_DEBUG
     new_state = dfu_get_state();
-    printf("[XXX] WE HAVE TRANSITIONED FROM %s to %s, the request was %s\n", print_state_name(old_state), print_state_name(new_state), print_request_name(current_dfu_cmd->setup_packet.bRequest));
+    printf("[XXX] WE HAVE TRANSITIONED FROM %s to %s, the request was %s\n", print_state_name(old_state), print_state_name(new_state), print_request_name(current_dfu_cmd.setup_packet.bRequest));
 #endif
-    /* FIXME: current dfu cmd does not need to be global */
-    dfu_release_current_dfu_cmd();
 }
 
 volatile int cur_size = 0;
@@ -1573,9 +1570,9 @@ void dfu_exec_automaton(void)
 {
     /* handle end of DNBUSY state */
     dfu_handle_dnbusy_timeout();
-#if USB_DFU_DEBUG
+//#if USB_DFU_DEBUG
     aprintf_flush();
-#endif
+//#endif
     if (dfu_ctx->data_to_store == true) {
         /* request data store. Effective data store is not synchronous and
          * has to be acknowledge using dfu_store_finished() on the upper layer.
@@ -1584,14 +1581,14 @@ void dfu_exec_automaton(void)
         dfu_store_data();
     }
 
-#if USB_DFU_DEBUG
+//#if USB_DFU_DEBUG
     aprintf_flush();
-#endif
+//#endif
     /* all DFU automaton execution */
     dfu_class_execute_request();
-#if USB_DFU_DEBUG
+//#if USB_DFU_DEBUG
     aprintf_flush();
-#endif
+//#endif
 
 }
 

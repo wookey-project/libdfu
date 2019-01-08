@@ -5,6 +5,11 @@
 
 #define MAX_DFU_CMD_QUEUE_SIZE 8
 
+/* Maximum poll timeout: the host will not send get_status
+ * requests between intervals < MAX_POLL_TIMEOUT
+ */
+#define MAX_POLL_TIMEOUT 300
+
 typedef struct __packed dfu_functional_descriptor {
 	uint8_t bLength;
 	uint8_t bDescriptorType;
@@ -40,44 +45,47 @@ typedef struct __packed {
         uint32_t dwCRC;
 } dfu_suffix_t;
 
-#define DFU_QUEUE_MAX_SIZE 10
-#define DFU_DATA_QUEUE_MAX_SIZE 10
-#define MAX_POLL_TIMEOUT 250
-
 typedef enum dfu_request {
- USB_RQST_DFU_DETACH             =  0x00,
- USB_RQST_DFU_DNLOAD             =  0x01,
- USB_RQST_DFU_UPLOAD             =  0x02,
- USB_RQST_DFU_GET_STATUS         =  0x03,
- USB_RQST_DFU_CLEAR_STATUS       =  0x04,
- USB_RQST_DFU_GET_STATE          =  0x05,
- USB_RQST_DFU_ABORT              =  0x06
+ USB_RQST_DFU_DETACH            =  0x00,
+ USB_RQST_DFU_DNLOAD            =  0x01,
+ USB_RQST_DFU_UPLOAD            =  0x02,
+ USB_RQST_DFU_GET_STATUS        =  0x03,
+ USB_RQST_DFU_CLEAR_STATUS      =  0x04,
+ USB_RQST_DFU_GET_STATE         =  0x05,
+ USB_RQST_DFU_ABORT             =  0x06
 } dfu_request_t;
 
-#define USB_RQST_DFU_DEBUG_CHKSIGN               0xF0
-#define USB_RQST_DFU_DEBUG_DECRYPT               0xF1
-#define USB_RQST_DFU_DEBUG_CRYPT                 0xF2
-#define USB_RQST_DFU_DEBUG_SETADDR               0xF3
-#define USB_RQST_DFU_DEBUG_GETADDR               0xF4
-#define USB_RQST_DFU_DEBUG_SETSIZE               0xF5
-#define USB_RQST_DFU_DEBUG_GETSIZE               0xF6
-
-
-
-
+typedef enum dfu_status_enum {
+    OK              		= 0x00,
+    ERRTARGET       		= 0x01,
+    ERRFILE         		= 0x02,
+    ERRWRITE        		= 0x03,
+    ERRERASE        		= 0x04,
+    ERRCHECK_ERASED 		= 0x05,
+    ERRPROG         		= 0x06,
+    ERRVERIFY       		= 0x07,
+    ERRADDRESS      	  	= 0x08,
+    ERRNOTDONE      		= 0x09,
+    ERRFIRMWARE     		= 0x0A,
+    ERRVENDOR       		= 0x0B,
+    ERRUSBR         		= 0x0C,
+    ERRPOR          		= 0x0D,
+    ERRUNKNOWN      		= 0x0E,
+    ERRSTALLEDPKT   		= 0x0F,
+} dfu_status_enum_t;
 
 typedef enum dfu_state_enum {
-    APPIDLE                 = 0x00,
-    APPDETACH               = 0x01,
-    DFUIDLE                 = 0x02,
-    DFUDNLOAD_SYNC          = 0x03,
-    DFUDNBUSY               = 0x04,
-    DFUDNLOAD_IDLE          = 0x05,
-    DFUMANIFEST_SYNC        = 0x06,
-    DFUMANIFEST             = 0x07,
-    DFUMANIFEST_WAIT_RESET  = 0x08,
-    DFUUPLOAD_IDLE          = 0x09,
-    DFUERROR                = 0x0A,
+    APPIDLE                	= 0x00,
+    APPDETACH               	= 0x01,
+    DFUIDLE                 	= 0x02,
+    DFUDNLOAD_SYNC          	= 0x03,
+    DFUDNBUSY               	= 0x04,
+    DFUDNLOAD_IDLE          	= 0x05,
+    DFUMANIFEST_SYNC        	= 0x06,
+    DFUMANIFEST             	= 0x07,
+    DFUMANIFEST_WAIT_RESET  	= 0x08,
+    DFUUPLOAD_IDLE          	= 0x09,
+    DFUERROR                	= 0x0A,
 }dfu_state_enum_t;
 
 
@@ -122,8 +130,6 @@ typedef struct  {
     dfu_eof_cb_t          cb_eof;
     bool                  data_to_store;
     bool                  data_to_load;
-    //uint32_t data_out_buffer_index;
-    //uint32_t data_in_buffer_index;
 } dfu_context_t;
 
 void dfu_init_context(void);
