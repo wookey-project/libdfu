@@ -1510,7 +1510,6 @@ static void dfu_class_execute_request(void)
 #endif
 }
 
-volatile int cur_size = 0;
 /*
  * Data out handler, called by the USB stack when the requested data
  * configured during the dfu_request_dnload() in the USB stack has been
@@ -1527,14 +1526,9 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
      * buffer content into the flash. When this is done, the flag is
      * lowered and the block_in_pogress field of the dfu context is set to 0.
      */
-//    cur_size += size;
-//    if (cur_size == dfu_ctx->data_out_length) {
-        ready_for_data_receive = true;
-        cur_size = 0;
-        dfu_usb_read_in_progress = false;
-        //out_handler_read_cnt++;
-        dfu_ctx->data_to_store = true;
-//    }
+     ready_for_data_receive = true;
+     dfu_usb_read_in_progress = false;
+     dfu_ctx->data_to_store = true;
 }
 
 /*
@@ -1570,9 +1564,9 @@ void dfu_exec_automaton(void)
 {
     /* handle end of DNBUSY state */
     dfu_handle_dnbusy_timeout();
-//#if USB_DFU_DEBUG
+#if USB_DFU_DEBUG
     aprintf_flush();
-//#endif
+#endif
     if (dfu_ctx->data_to_store == true) {
         /* request data store. Effective data store is not synchronous and
          * has to be acknowledge using dfu_store_finished() on the upper layer.
@@ -1581,14 +1575,14 @@ void dfu_exec_automaton(void)
         dfu_store_data();
     }
 
-//#if USB_DFU_DEBUG
+#if USB_DFU_DEBUG
     aprintf_flush();
-//#endif
+#endif
     /* all DFU automaton execution */
     dfu_class_execute_request();
-//#if USB_DFU_DEBUG
+#if USB_DFU_DEBUG
     aprintf_flush();
-//#endif
+#endif
 
 }
 
