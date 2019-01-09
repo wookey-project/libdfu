@@ -55,25 +55,6 @@ typedef enum dfu_request {
  USB_RQST_DFU_ABORT             =  0x06
 } dfu_request_t;
 
-typedef enum dfu_status_enum {
-    OK              		= 0x00,
-    ERRTARGET       		= 0x01,
-    ERRFILE         		= 0x02,
-    ERRWRITE        		= 0x03,
-    ERRERASE        		= 0x04,
-    ERRCHECK_ERASED 		= 0x05,
-    ERRPROG         		= 0x06,
-    ERRVERIFY       		= 0x07,
-    ERRADDRESS      	  	= 0x08,
-    ERRNOTDONE      		= 0x09,
-    ERRFIRMWARE     		= 0x0A,
-    ERRVENDOR       		= 0x0B,
-    ERRUSBR         		= 0x0C,
-    ERRPOR          		= 0x0D,
-    ERRUNKNOWN      		= 0x0E,
-    ERRSTALLEDPKT   		= 0x0F,
-} dfu_status_enum_t;
-
 typedef enum dfu_state_enum {
     APPIDLE                	= 0x00,
     APPDETACH               	= 0x01,
