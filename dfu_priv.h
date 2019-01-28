@@ -3,13 +3,6 @@
 
 #include "api/dfu.h"
 
-#define MAX_DFU_CMD_QUEUE_SIZE 8
-
-/* Maximum poll timeout: the host will not send get_status
- * requests between intervals < MAX_POLL_TIMEOUT
- */
-#define MAX_POLL_TIMEOUT 300
-
 typedef struct __packed dfu_functional_descriptor {
 	uint8_t bLength;
 	uint8_t bDescriptorType;

@@ -13,7 +13,7 @@
 /* Maximum poll timeout for the host to send get_status()
  * requests (in milliseconds).
  */
-#define MAX_POLL_TIMEOUT 300
+#define MAX_POLL_TIMEOUT 350
 
 typedef enum dfu_status_enum {
     OK              = 0x00,
@@ -57,7 +57,7 @@ typedef void (*dfu_eof_cb_t)(void);
 
 /*
  * Early initialization, declaring the DFU stack. This include the USB
- * stack initialisation. This function must be called before the 
+ * stack initialisation. This function must be called before the
  * sys_init(INIT_DONE) call.
  * Request PERM_RES_DEV_BUSES permission.
  * CAUTION: in USB-HS mode, the task must have the MAP_VOLUNTARY permission
