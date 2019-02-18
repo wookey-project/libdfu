@@ -13,7 +13,7 @@
 /* Maximum poll timeout for the host to send get_status()
  * requests (in milliseconds).
  */
-#define MAX_POLL_TIMEOUT 350
+#define MAX_POLL_TIMEOUT 450
 
 typedef enum dfu_status_enum {
     OK              = 0x00,
