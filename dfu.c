@@ -1451,53 +1451,56 @@ static void dfu_class_execute_request(void)
     old_state = dfu_get_state();
 #endif
     switch( current_dfu_cmd.setup_packet.bRequest ) {
+	/* Note: (void*) cast to silence clang [-Werror,-Waddress-of-packed-member]
+	 * Our architecture allows unaligned accesses, so this should be OK.
+	 */
         case USB_RQST_DFU_DETACH:
 #if USB_DFU_DEBUG
             printf("DFU_DETACH\n");
 #endif
-            dfu_request_detach((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
+            dfu_request_detach((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
             break;
 
         case USB_RQST_DFU_DNLOAD:
 #if USB_DFU_DEBUG
             printf("DFU_DNLOAD\n");
 #endif
-            dfu_request_dnload((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
+            dfu_request_dnload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
             break;
 
         case USB_RQST_DFU_UPLOAD:
 #if USB_DFU_DEBUG
             printf("DFU_UPLOAD\n");
 #endif
-            dfu_request_upload((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
+            dfu_request_upload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
             break;
 
         case USB_RQST_DFU_GET_STATUS:
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATUS\n");
 #endif
-            dfu_request_getstatus((struct usb_setup_packet*)&current_dfu_cmd.setup_packet, current_dfu_cmd.timestamp);
+            dfu_request_getstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet), current_dfu_cmd.timestamp);
             break;
 
         case USB_RQST_DFU_CLEAR_STATUS:
 #if USB_DFU_DEBUG
             printf("DFU_CLEAR_STATUS\n");
 #endif
-            dfu_request_clrstatus((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
+            dfu_request_clrstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
             break;
 
         case USB_RQST_DFU_GET_STATE:
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATE\n");
 #endif
-            dfu_request_getstate((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
+            dfu_request_getstate((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
             break;
 
         case USB_RQST_DFU_ABORT:
 #if USB_DFU_DEBUG
             printf("DFU_GET_ABORT\n");
 #endif
-            dfu_request_abort((struct usb_setup_packet*)&current_dfu_cmd.setup_packet);
+            dfu_request_abort((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
             break;
 
         default:
