@@ -749,6 +749,10 @@ err:
  */
 void dfu_request_detach(struct usb_setup_packet *setup_packet)
 {
+    /* Sanity check */
+    if(setup_packet == NULL){
+        goto invalid_transition;
+    }
     /* Sanity check and next state detection */
     uint8_t next_state;
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
@@ -779,6 +783,10 @@ invalid_transition:
  */
 void dfu_request_dnload(struct usb_setup_packet *setup_packet)
 {
+    /* Sanity check */
+    if(setup_packet == NULL){
+        goto invalid_transition;
+    }
     /* Sanity check and next state detection */
     uint8_t next_state;
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
@@ -894,6 +902,10 @@ void dfu_leave_session_with_error(const dfu_status_enum_t new_status)
  */
 void dfu_request_upload(struct usb_setup_packet *setup_packet) 
 {
+    /* Sanity check */
+    if(setup_packet == NULL){
+        goto invalid_transition;
+    }
     /* Sanity check and next state detection */
     uint8_t next_state;
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
@@ -994,6 +1006,10 @@ size_too_big:
  */
 void dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t timestamp)
 {
+    /* Sanity check */
+    if(setup_packet == NULL){
+        goto invalid_transition;
+    }
     /* Sanity check and next state detection */
     uint8_t next_state;
     device_dfu_status_t status;
@@ -1198,6 +1214,10 @@ invalid_transition:
  */
 void dfu_request_clrstatus(struct usb_setup_packet *setup_packet) 
 {
+    /* Sanity check */
+    if(setup_packet == NULL){
+        goto invalid_transition;
+    }
     /* Sanity check and next state detection */
     uint8_t next_state;
     device_dfu_status_t status;
@@ -1225,6 +1245,10 @@ invalid_transition:
  */
 void dfu_request_getstate(struct usb_setup_packet *setup_packet) 
 {
+    /* Sanity check */
+    if(setup_packet == NULL){
+        goto invalid_transition;
+    }
     /* Sanity check and next state detection */
     uint8_t next_state;
     device_dfu_status_t status;
@@ -1268,6 +1292,10 @@ invalid_transition:
  */
 void dfu_request_abort(struct usb_setup_packet *setup_packet) 
 {
+    /* Sanity check */
+    if(setup_packet == NULL){
+        goto invalid_transition;
+    }
     /* Sanity check and next state detection */
     uint8_t next_state;
     device_dfu_status_t status;
@@ -1361,6 +1389,12 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     uint8_t ret;
     uint64_t ms;
 
+    /* Sanity check */
+    if(setup_packet == NULL){
+        aprintf("NULL packet\n");
+        return;
+    }
+
     ret = sys_get_systick(&ms, PREC_MILLI);
     if (ret != SYS_E_DONE) {
         aprintf("timestamping error\n");
@@ -1411,6 +1445,9 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
  */
 static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
 {
+    if(current_dfu_cmd == NULL){
+        return;
+    }
     if (*current_dfu_cmd != NULL) {
         if (wfree((void**)current_dfu_cmd)) {
             printf("freeing current command failed with errno %d\n", errno);
