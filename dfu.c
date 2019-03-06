@@ -11,7 +11,7 @@
 
 #define USB_DFU_DEBUG 0
 
-extern uint32_t errno;
+extern uint32_t malloc_errno;
 
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
@@ -148,15 +148,15 @@ static const char *print_request_name(dfu_request_t req){
 
 static const char *state_name[] = {
     "APPIDLE",
-    "APPDETACH",             
-    "DFUIDLE",               
-    "DFUDNLOAD_SYNC",        
-    "DFUDNBUSY",             
-    "DFUDNLOAD_IDLE",        
-    "DFUMANIFEST_SYNC",      
-    "DFUMANIFEST",           
+    "APPDETACH",
+    "DFUIDLE",
+    "DFUDNLOAD_SYNC",
+    "DFUDNBUSY",
+    "DFUDNLOAD_IDLE",
+    "DFUMANIFEST_SYNC",
+    "DFUMANIFEST",
     "DFUMANIFEST_WAIT_RESET",
-    "DFUUPLOAD_IDLE",        
+    "DFUUPLOAD_IDLE",
     "DFUERROR",
 };
 static const char *unknown_state_name = "UKNOWN STATE";
@@ -616,7 +616,7 @@ static void dfu_store_data(void)
     //uint16_t blocknum = dfu_ctx->current_block_offset;
 
     if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
-        /* should not happend out of these two states. In that very case, 
+        /* should not happend out of these two states. In that very case,
          * there is no block in progress as the automaton is not in download
          * mode
          */
@@ -637,7 +637,7 @@ static void dfu_load_data(void)
     /* INFO: size is given by setup packet but the block number is not
      * managed by the host, which only manage a file size */
     if (dfu_get_state() != DFUUPLOAD_IDLE) {
-        /* should not happend out of these two states. In that very case, 
+        /* should not happend out of these two states. In that very case,
          * there is no block in progress as the automaton is not in download
          * mode
          */
@@ -900,7 +900,7 @@ void dfu_leave_session_with_error(const dfu_status_enum_t new_status)
 /*
  * Handle DFU_UPLOAD event
  */
-void dfu_request_upload(struct usb_setup_packet *setup_packet) 
+void dfu_request_upload(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1075,7 +1075,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t times
                 status.iString = dfu_get_status_string_id();
 
                 /* if a previous DNLOAD is not yet finished, wait before
-                 * reconfiguring the USB device 
+                 * reconfiguring the USB device
                  */
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
@@ -1123,7 +1123,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t times
                 status.iString = dfu_get_status_string_id();
 
                 /* if a previous DNLOAD is not yet finished, wait before
-                 * reconfiguring the USB device 
+                 * reconfiguring the USB device
                  */
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
@@ -1212,7 +1212,7 @@ invalid_transition:
 /*
  * Handle DFU_CLEAR_STATUS event
  */
-void dfu_request_clrstatus(struct usb_setup_packet *setup_packet) 
+void dfu_request_clrstatus(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1243,7 +1243,7 @@ invalid_transition:
 /*
  * Handle DFU_GETSTATE event
  */
-void dfu_request_getstate(struct usb_setup_packet *setup_packet) 
+void dfu_request_getstate(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1290,7 +1290,7 @@ invalid_transition:
 /*
  * Handle DFU_ABORT event
  */
-void dfu_request_abort(struct usb_setup_packet *setup_packet) 
+void dfu_request_abort(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1450,7 +1450,7 @@ static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
     }
     if (*current_dfu_cmd != NULL) {
         if (wfree((void**)current_dfu_cmd)) {
-            printf("freeing current command failed with errno %d\n", errno);
+            printf("freeing current command failed with errno %d\n", malloc_errno);
             dfu_error(ERRUNKNOWN);
         }
     }
