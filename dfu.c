@@ -2,6 +2,7 @@
 #include "api/types.h"
 #include "api/syscall.h"
 #include "api/print.h"
+#include "api/string.h"
 #include "api/dfu.h"
 #include "dfu_priv.h"
 #include "usb.h"
@@ -28,13 +29,21 @@ static volatile dfu_context_t * const dfu_ctx = &dfu_context;
 
 
 
-/* FIXME dummy */
-uint8_t read_firmware_data_cmd = 0;
-uint8_t read_firmware_data_done = 0;
+/* This variable are read/write in separated temporal windows, making
+ * volatile or critical section usage usless
+ */
+static uint8_t read_firmware_data_cmd = 0;
 
 /********* USB layer handling ***************/
-static volatile bool dfu_usb_read_in_progress = false;
-static volatile bool dfu_usb_write_in_progress = false;
+/*
+ * These locks permit to detect if the below USB stack is ready or hasn't finished
+ * yet data transmission/reception. These flags are updated by callbacks executed by
+ * the USB below stack.
+ * As the USB stack can't hold data while its previous job is not finished, we manage
+ * the serialisation here
+ */
+static bool dfu_usb_read_in_progress = false;
+static bool dfu_usb_write_in_progress = false;
 
 static void dfu_usb_driver_setup_read_status(void){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
@@ -1402,8 +1411,17 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     }
     request_queue_node_t *cur_req = NULL;
 
-    /* We have received a setup packet: we can release the USB read lock */
+    /* We have received a setup packet: we can release the USB read lock
+     * There is no possible race condition on this variable as temporal
+     * windows on which this variable is set in mainthread and ISR are
+     * separated. As a consequence, lock or critical sections is not required
+     * for accessing this variable
+     */
     dfu_usb_read_in_progress = false;
+
+    /*
+     * Request unknown (not DFU standard)
+     */
     if (setup_packet->bRequest > USB_RQST_DFU_ABORT) {
 #if USB_DFU_DEBUG
         aprintf("dfu: %s: unknown request\n", __func__);
@@ -1411,8 +1429,12 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
         dfu_error(ERRUNKNOWN);
         return;
     }
-    /**/
 
+    /*
+     * Here we prepare the cell before enqueuing it, The DFU request is queued
+     * in order to be executed in main thread mode. The ISR only handle
+     * requests enquing
+     */
 #if USB_DFU_DEBUG
     aprintf("[handler mode] ENQUEUINQ => state %s, req %s\n", print_state_name(dfu_get_state()), print_request_name(setup_packet->bRequest));
 #endif
@@ -1429,6 +1451,9 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     cur_req->request = setup_packet->bRequest;
     cur_req->timestamp = ms;
     memcpy((void*)&cur_req->setup_packet, setup_packet, sizeof(struct usb_setup_packet));
+    /*
+     * Enqueue and set queue as not empty
+     */
     queue_enqueue(dfu_cmd_queue, cur_req);
     dfu_cmd_queue_empty = 0;
 
