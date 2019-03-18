@@ -1,6 +1,7 @@
 #ifndef QUEUE_H
 # define QUEUE_H
-#include "api/print.h"
+#include "api/stdio.h"
+#include "api/nostd.h"
 #include "api/malloc.h"
 #include "api/regutils.h"
 

@@ -2,7 +2,8 @@
 #define _USB_DFU_UTILS_H
 
 #include "api/types.h"
-#include "api/print.h"
+#include "api/stdio.h"
+#include "api/nostd.h"
 #include "api/regutils.h"
 #include "usb.h"
 /* usb driver control header */
