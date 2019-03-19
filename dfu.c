@@ -43,8 +43,8 @@ static uint8_t read_firmware_data_cmd = 0;
  * As the USB stack can't hold data while its previous job is not finished, we manage
  * the serialisation here
  */
-static bool dfu_usb_read_in_progress = false;
-static bool dfu_usb_write_in_progress = false;
+static volatile bool dfu_usb_read_in_progress = false;
+static volatile bool dfu_usb_write_in_progress = false;
 
 static void dfu_usb_driver_setup_read_status(void){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
