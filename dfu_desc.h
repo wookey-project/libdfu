@@ -82,12 +82,12 @@ static usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
         .bmAttributes.reserved = 0,
 	.bmAttributes.bitWillDetach = 0,
 	.bmAttributes.bitManifestationTolerant = 0,
-#if USR_LIB_DFU_CAN_UPLOAD
+#if CONFIG_USR_LIB_DFU_CAN_UPLOAD
 	.bmAttributes.bitCanUpload = 1,
 #else
 	.bmAttributes.bitCanUpload = 0,
 #endif
-#if USR_LIB_DFU_CAN_DOWNLOAD
+#if CONFIG_USR_LIB_DFU_CAN_DOWNLOAD
 	.bmAttributes.bitCanDnload = 1,
 #else
 	.bmAttributes.bitCanDnload = 0,
@@ -96,7 +96,7 @@ static usb_ctrl_full_configuration_descriptor_t dfu_configuration_desc = {
 	/* Big transfer size chunks */
 	.wTransferSize = 0, /* Updated during dfu_init() */
 	/* DFU 1.1 */
-	.bcdDFUVersion = 0x0110, 
+	.bcdDFUVersion = 0x0110,
     },
 };
 

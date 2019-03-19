@@ -35,26 +35,69 @@ typedef enum dfu_status_enum {
     ERRSTALLEDPKT   = 0x0F,
 } dfu_status_enum_t;
 
+
+/*****************************************************
+ * externally supplied implementations prototypes
+ *
+ * WARNING: these functions MUST be defined in the binary
+ * which include the libDFU. These functions implement
+ * the backend storage access, which may vary depending on
+ * the overall system implementation and which is not, as a
+ * consequence, a DFU specific implementation.
+ *****************************************************/
+
+/*
+ * Why using symbol resolution instead of callbacks ?
+ *
+ * Symbol resolution is made at link time, instead of requiring
+ * function pointers that need to be registered in a writable
+ * area of the application memory.
+ *
+ * A lot of security vulnerabilities are based on function pointers
+ * corruption using overflows on stack contexts, making ROP or
+ * any other uncontrolled execution flows possible.
+ *
+ * Moreover, linking directly to the symbol avoid a resolution of
+ * the callback address and help the compiler at optimization time.
+ */
+
+/*
+ * \brief Write data to the storage backend
+ *
+ * \param data      the data buffer pointer
+ * \param data_size the size (in bytes) to write
+ * \param blocknum  the DFU block identifier
+ *
+ * \return 0 on success
+ */
+uint8_t dfu_backend_write(uint8_t ** volatile data,
+                          const uint16_t      data_size,
+                          uint16_t            blocknum);
+
+/*
+ * \brief Read data from the storage backend
+ *
+ * \param data      the data buffer pointer
+ * \param data_size the size (in bytes) to read
+ *
+ * \return 0 on success
+ */
+uint8_t dfu_backend_read(uint8_t *data, uint16_t data_size);
+
+/*
+ * \brief Inform storage backend that there is no more content to write
+ *
+ * This function is used in DFU DNWLOAD mode only
+ *
+ */
+void dfu_backend_eof(void);
+
+
+/***********************************************************
+ * libDFU API
+ ***********************************************************/
+
 void dfu_leave_session_with_error(const dfu_status_enum_t new_status);
-
-/*
- * Task callback, executed at the end of a data transfer reception,
- * to decide what to do with these data.
- * @param datat     he buffer address on which the data should be written from,
- *                  to the storage backend
- * @param data_size the amount of data to write
- * @param blocknum  the current chunk number, given by the host
- */
-typedef uint8_t (*dfu_write_block_cb_t)(uint8_t ** volatile data, uint16_t size, uint16_t blocknum);
-
-/*
- * Task callback, executed at the begining of a data upload request
- * to ask the uper layer how to get back the data into the DFU buffer
- * before transmission
- */
-typedef uint8_t (*dfu_read_block_cb_t)(uint8_t *data, uint16_t size);
-
-typedef void (*dfu_eof_cb_t)(void);
 
 /*
  * Early initialization, declaring the DFU stack. This include the USB
@@ -68,19 +111,10 @@ void dfu_early_init(void);
 /**
  * @brief initialize the DFU stack
  *
- * @param write_cb the callback executed when an input buffer is ready to be
- *                 stored
- * @param read_cb  the callback executed when an input data is requested from
- *                 the DFU stack (in upload mode)
- * @param eof_cb   the callback executed when the download (or upload) session
- *                 has terminated without error.
  * @param buffer   the data buffer to use for storing data from/to USB FIFO
  * @param max_size the buffer size, at least 64, must be a power of 2.
  */
-void dfu_init(dfu_write_block_cb_t write_cb,
-              dfu_read_block_cb_t  read_cb,
-              dfu_eof_cb_t         eof_cb,
-              uint8_t **buffer,
+void dfu_init(uint8_t **buffer,
               uint16_t max_size);
 
 /**

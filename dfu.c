@@ -11,7 +11,7 @@
 #include "usb_control.h"
 #include "queue.h"
 
-#define USB_DFU_DEBUG 0
+#define USB_DFU_DEBUG 1
 
 extern uint32_t malloc_errno;
 
@@ -632,9 +632,7 @@ static void dfu_store_data(void)
          */
         return;
     }
-    if (dfu_ctx->cb_write) {
-        dfu_ctx->cb_write(dfu_ctx->data_out_buffer, dfu_ctx->data_out_length, dfu_ctx->data_out_nb_blocks);
-    }
+    dfu_backend_write(dfu_ctx->data_out_buffer, dfu_ctx->data_out_length, dfu_ctx->data_out_nb_blocks);
     // now set the write action as done
     dfu_ctx->data_out_current_block_nb += 1;
     /* store request sent, no more data to store by now */
@@ -653,9 +651,7 @@ static void dfu_load_data(void)
          */
         return;
     }
-    if (dfu_ctx->cb_read) {
-        dfu_ctx->cb_read((uint8_t*)dfu_ctx->data_in_buffer, dfu_ctx->data_in_length);
-    }
+    dfu_backend_read((uint8_t*)dfu_ctx->data_in_buffer, dfu_ctx->data_in_length);
     // now set the write action as done
     dfu_ctx->data_in_current_block_nb += 1;
     /* store request sent, no more data to store by now */
@@ -1174,9 +1170,7 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t times
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
                 /* inform the upper layer that the download is complete */
-                if (dfu_ctx->cb_eof) {
-                    dfu_ctx->cb_eof();
-                }
+                dfu_backend_eof();
                 break;
             }
         case DFUUPLOAD_IDLE:
@@ -1661,9 +1655,6 @@ void dfu_init_context(void)
 {
     uint16_t transfert_size = dfu_context.transfert_size ? dfu_context.transfert_size : 0;
     uint8_t  **buffer = dfu_context.data_out_buffer ? dfu_context.data_out_buffer : 0;
-    dfu_write_block_cb_t write_cb = dfu_context.cb_write ? dfu_context.cb_write : 0;
-    dfu_read_block_cb_t read_cb = dfu_context.cb_read ? dfu_context.cb_read : 0;
-    dfu_eof_cb_t        eof_cb = dfu_context.cb_eof ? dfu_context.cb_eof : 0;
 
     dfu_context.block_in_progress = 0;
     dfu_context.session_in_progress = 0;
@@ -1686,9 +1677,6 @@ void dfu_init_context(void)
     dfu_context.transfert_size = transfert_size;
     dfu_context.firmware_size = 0;
     dfu_context.current_block_offset = 0;
-    dfu_context.cb_read = read_cb;
-    dfu_context.cb_write = write_cb;
-    dfu_context.cb_eof  = eof_cb;
     dfu_context.data_to_store = false;
     dfu_context.data_to_load  = false;
 }
@@ -1700,10 +1688,7 @@ void dfu_early_init(void)
 }
 
 
-void dfu_init(dfu_write_block_cb_t write_cb,
-              dfu_read_block_cb_t  read_cb,
-              dfu_eof_cb_t         eof_cb,
-              uint8_t **buffer,
+void dfu_init(uint8_t **buffer,
               uint16_t max_size)
 {
 
@@ -1734,9 +1719,6 @@ void dfu_init(dfu_write_block_cb_t write_cb,
      * project specific events such as IPC, mass-storage write, etc.)
      */
     printf("initializing buffer to %x, size %x\n", buffer, max_size);
-    dfu_context.cb_write = write_cb;
-    dfu_context.cb_read = read_cb;
-    dfu_context.cb_eof  = eof_cb;
     dfu_fct_desc.wTransferSize = max_size;
 
 /* if max_size is less than 64 or not a power of 2, it is an error */
@@ -1751,9 +1733,6 @@ void dfu_init(dfu_write_block_cb_t write_cb,
     dfu_context.data_in_buffer = buffer;
     dfu_context.block_size = 0;
     dfu_context.transfert_size = max_size;
-    dfu_context.cb_read  = read_cb;
-    dfu_context.cb_write = write_cb;
-    dfu_context.cb_eof   = eof_cb;
     usb_driver_init();
     return;
 }

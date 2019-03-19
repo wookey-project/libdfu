@@ -99,9 +99,6 @@ typedef struct  {
     uint16_t              data_out_current_block_nb;
     uint16_t              data_in_current_block_nb;
     uint32_t              current_block_offset;
-    dfu_read_block_cb_t   cb_read;
-    dfu_write_block_cb_t  cb_write;
-    dfu_eof_cb_t          cb_eof;
     bool                  data_to_store;
     bool                  data_to_load;
 } dfu_context_t;
