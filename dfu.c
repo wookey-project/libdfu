@@ -4,12 +4,12 @@
 #include "api/stdio.h"
 #include "api/nostd.h"
 #include "api/string.h"
+#include "api/queue.h"
 #include "api/dfu.h"
 #include "dfu_priv.h"
 #include "usb.h"
 #include "dfu_desc.h"
 #include "usb_control.h"
-#include "queue.h"
 
 #define USB_DFU_DEBUG 0
 
@@ -1391,6 +1391,7 @@ static volatile unsigned int dfu_cmd_queue_empty = 1;
 static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
 {
     uint8_t ret;
+    mbed_error_t err;
     uint64_t ms;
 
     /* Sanity check */
@@ -1434,7 +1435,7 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     aprintf("[handler mode] ENQUEUINQ => state %s, req %s\n", print_state_name(dfu_get_state()), print_request_name(setup_packet->bRequest));
 #endif
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
-    if(ret){
+    if(ret) {
         aprintf("Error while allocating queue !!!\n");
         dfu_error(ERRUNKNOWN);
         return;
@@ -1449,7 +1450,13 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
     /*
      * Enqueue and set queue as not empty
      */
-    queue_enqueue(dfu_cmd_queue, cur_req);
+    err = queue_enqueue(dfu_cmd_queue, cur_req);
+    if (err == MBED_ERROR_BUSY) {
+        aprintf("[ISR] Error! queue is busy!\n");
+    }
+if (err == MBED_ERROR_NOMEM) {
+        aprintf("[ISR] Error! queue is full!\n");
+    }
     dfu_cmd_queue_empty = 0;
 
     return;
@@ -1495,7 +1502,9 @@ static void dfu_class_execute_request(void)
         return;
     }
     enter_critical_section();
-    current_dfu_cmd_p = queue_dequeue(dfu_cmd_queue);
+    if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
+        aprintf("Unable to dequeue command!\n");
+    }
     current_dfu_cmd = *current_dfu_cmd_p;
     dfu_release_current_dfu_cmd(&current_dfu_cmd_p);
     if(queue_is_empty(dfu_cmd_queue)) {
@@ -1688,15 +1697,20 @@ void dfu_early_init(void)
 }
 
 
-void dfu_init(uint8_t **buffer,
-              uint16_t max_size)
+mbed_error_t dfu_init(uint8_t **buffer,
+                      uint16_t max_size)
 {
 
+    mbed_error_t err;
     usb_driver_map();
 #ifdef CONFIG_STD_MALLOC_LIGHT
     wmalloc_init();
 
-    dfu_cmd_queue = queue_create(MAX_DFU_CMD_QUEUE_SIZE);
+    err = queue_create(MAX_DFU_CMD_QUEUE_SIZE, &dfu_cmd_queue);
+    if (err != MBED_ERROR_NONE) {
+        printf("Unable to create queue !\n");
+        return err;
+    }
     //wmalloc(DFU_DATA_QUEUE_MAX_SIZE*sizeof(uint8_t), ALLOC_NORMAL);
     //	wmalloc_init(heap_base, DFU_DATA_QUEUE_MAX_SIZE);
 #endif
@@ -1734,5 +1748,5 @@ void dfu_init(uint8_t **buffer,
     dfu_context.block_size = 0;
     dfu_context.transfert_size = max_size;
     usb_driver_init();
-    return;
+    return MBED_ERROR_NONE;
 }

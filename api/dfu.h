@@ -114,8 +114,8 @@ void dfu_early_init(void);
  * @param buffer   the data buffer to use for storing data from/to USB FIFO
  * @param max_size the buffer size, at least 64, must be a power of 2.
  */
-void dfu_init(uint8_t **buffer,
-              uint16_t max_size);
+mbed_error_t dfu_init(uint8_t **buffer,
+                      uint16_t max_size);
 
 /**
  * Run the DFU automaton.
