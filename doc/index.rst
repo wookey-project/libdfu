@@ -16,7 +16,6 @@ Wookey STM32F439 driver API, and should be easily portable with other drivers.
    :maxdepth: 2
 
    About the DFU protocol <about>
-   Quickstart <quickstart>
    The DFU API <api>
    FAQ <faq>
 
