@@ -41,6 +41,9 @@ default: all
 
 all: $(APP_BUILD_DIR) lib
 
+doc:
+	$(Q)$(MAKE) -C doc html latex
+
 show:
 	@echo
 	@echo "\tAPP_BUILD_DIR\t=> " $(APP_BUILD_DIR)
