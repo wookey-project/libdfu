@@ -1,5 +1,5 @@
-Welcome to the libDFU project documentation!
-============================================
+The DFU stack
+=============
 
 The LibDFU project aim to implement a complete USB DFU (Direct Firmware Update)
 device-side automaton.
