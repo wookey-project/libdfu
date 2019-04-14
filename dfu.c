@@ -753,7 +753,7 @@ err:
 /*
  * Handle DFU_DETACH event
  */
-void dfu_request_detach(struct usb_setup_packet *setup_packet)
+int dfu_request_detach(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -774,12 +774,12 @@ void dfu_request_detach(struct usb_setup_packet *setup_packet)
 
     /* effective transition execution (if needed) */
     /* no action */
-    return;
+    return 0;
 
 invalid_transition:
     printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 
 }
 
@@ -787,7 +787,7 @@ invalid_transition:
 /*
  * Handle DFU_DNLOAD event
  */
-void dfu_request_dnload(struct usb_setup_packet *setup_packet)
+int dfu_request_dnload(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -871,24 +871,24 @@ void dfu_request_dnload(struct usb_setup_packet *setup_packet)
             break;
     }
 
-    return;
+    return 0;
 
 invalid_transition:
     printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 
     /* FIXME proper error ?*/
 download_not_supported:
     printf("dfu error: idle and can't download !\n");
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 
 size_too_big:
     printf("dfu error ! input size too big! %x > %x\n",
             setup_packet->wLength, dfu_ctx->transfert_size);
     dfu_error(ERRSTALLEDPKT);
-    return;
+    return -1;
 }
 
 
@@ -906,7 +906,7 @@ void dfu_leave_session_with_error(const dfu_status_enum_t new_status)
 /*
  * Handle DFU_UPLOAD event
  */
-void dfu_request_upload(struct usb_setup_packet *setup_packet)
+int dfu_request_upload(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -987,30 +987,30 @@ void dfu_request_upload(struct usb_setup_packet *setup_packet)
             break;
     }
 
-    return;
+    return 0;
 
 invalid_transition:
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 
     /* FIXME proper error ?*/
 upload_not_supported:
     printf("dfu error ! idle mode and can't upload\n");
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 
 size_too_big:
     printf("dfu error ! input size too big! %x > %x\n",
             setup_packet->wLength, dfu_ctx->transfert_size);
     dfu_error(ERRSTALLEDPKT);
-    return;
+    return -1;
 
 }
 
 /*
  * Handle DFU_GETSTATUS event
  */
-void dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t timestamp)
+int dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t timestamp)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1205,18 +1205,18 @@ void dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t times
             printf("maybe a missing state: check automaton\n");
             break;
     }
-    return;
+    return 0;
 
 invalid_transition:
     printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 }
 
 /*
  * Handle DFU_CLEAR_STATUS event
  */
-void dfu_request_clrstatus(struct usb_setup_packet *setup_packet)
+int dfu_request_clrstatus(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1235,19 +1235,19 @@ void dfu_request_clrstatus(struct usb_setup_packet *setup_packet)
     dfu_init_context();
     dfu_set_state(next_state);
     dfu_usb_driver_setup_send_status(0);
-    return;
+    return 0;
 
 invalid_transition:
     printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 }
 
 
 /*
  * Handle DFU_GETSTATE event
  */
-void dfu_request_getstate(struct usb_setup_packet *setup_packet)
+int dfu_request_getstate(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1283,18 +1283,18 @@ void dfu_request_getstate(struct usb_setup_packet *setup_packet)
             printf("maybe a missing state: check automaton\n");
             break;
     }
-    return;
+    return 0;
 
 invalid_transition:
     printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 }
 
 /*
  * Handle DFU_ABORT event
  */
-void dfu_request_abort(struct usb_setup_packet *setup_packet)
+int dfu_request_abort(struct usb_setup_packet *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1328,12 +1328,12 @@ void dfu_request_abort(struct usb_setup_packet *setup_packet)
             break;
 
     }
-    return;
+    return 0;
 
 invalid_transition:
     printf("%s: invalid_transition\n", __func__);
     dfu_error(ERRUNKNOWN);
-    return;
+    return -1;
 }
 
 
@@ -1493,13 +1493,13 @@ static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
  * This function dequeue all the events queued in handler
  * mode, respecting the events order.
  *****************************************************/
-static void dfu_class_execute_request(void)
+static int dfu_class_execute_request(void)
 {
     request_queue_node_t *current_dfu_cmd_p = NULL;
     request_queue_node_t current_dfu_cmd;
     if(dfu_cmd_queue_empty == 1)
     {
-        return;
+        return 0;
     }
     enter_critical_section();
     if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
@@ -1524,49 +1524,63 @@ static void dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_DETACH\n");
 #endif
-            dfu_request_detach((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
+            if(dfu_request_detach((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet))){
+                goto err;
+            }
             break;
 
         case USB_RQST_DFU_DNLOAD:
 #if USB_DFU_DEBUG
             printf("DFU_DNLOAD\n");
 #endif
-            dfu_request_dnload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
+            if(dfu_request_dnload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet))){
+                goto err;
+            }
             break;
 
         case USB_RQST_DFU_UPLOAD:
 #if USB_DFU_DEBUG
             printf("DFU_UPLOAD\n");
 #endif
-            dfu_request_upload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
+            if(dfu_request_upload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet))){
+                goto err;
+            }
             break;
 
         case USB_RQST_DFU_GET_STATUS:
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATUS\n");
 #endif
-            dfu_request_getstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet), current_dfu_cmd.timestamp);
+            if(dfu_request_getstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet), current_dfu_cmd.timestamp)){
+                goto err;
+            }
             break;
 
         case USB_RQST_DFU_CLEAR_STATUS:
 #if USB_DFU_DEBUG
             printf("DFU_CLEAR_STATUS\n");
 #endif
-            dfu_request_clrstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
+            if(dfu_request_clrstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet))){
+                goto err;
+            }
             break;
 
         case USB_RQST_DFU_GET_STATE:
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATE\n");
 #endif
-            dfu_request_getstate((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
+            if(dfu_request_getstate((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet))){
+                goto err;
+            }
             break;
 
         case USB_RQST_DFU_ABORT:
 #if USB_DFU_DEBUG
             printf("DFU_GET_ABORT\n");
 #endif
-            dfu_request_abort((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet));
+            if(dfu_request_abort((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet))){
+                goto err;
+            }
             break;
 
         default:
@@ -1577,6 +1591,10 @@ static void dfu_class_execute_request(void)
     new_state = dfu_get_state();
     printf("[XXX] WE HAVE TRANSITIONED FROM %s to %s, the request was %s\n", print_state_name(old_state), print_state_name(new_state), print_request_name(current_dfu_cmd.setup_packet.bRequest));
 #endif
+    return 0;
+
+err:
+    return -1;
 }
 
 /*
@@ -1629,7 +1647,7 @@ static void dfu_data_in_handler(void)
  * DFU automaton main call
  **************************************************/
 
-void dfu_exec_automaton(void)
+int dfu_exec_automaton(void)
 {
     /* handle end of DNBUSY state */
     dfu_handle_dnbusy_timeout();
@@ -1648,11 +1666,17 @@ void dfu_exec_automaton(void)
     aprintf_flush();
 #endif
     /* all DFU automaton execution */
-    dfu_class_execute_request();
+    if(dfu_class_execute_request()){
+        goto err;
+    }
 #if USB_DFU_DEBUG
     aprintf_flush();
 #endif
 
+    return 0;
+
+err:
+    return -1;
 }
 
 
