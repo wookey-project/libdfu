@@ -129,7 +129,7 @@ mbed_error_t dfu_init(uint8_t **buffer,
  *   }
  * }
  */
-int dfu_exec_automaton(void);
+mbed_error_t dfu_exec_automaton(void);
 
 /*
  * The storing backend has finished to store data ? This function inform the

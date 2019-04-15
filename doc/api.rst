@@ -91,13 +91,23 @@ The DFU stack automaton is executed in main thread using the following function:
 
    #include "dfu.h"
 
-   void dfu_exec_automaton(void);
+   mbed_error_t dfu_exec_automaton(void);
 
 A basic usage of the automaton would be::
 
+   mbed_error_t ret;
    while (1) {
-       dfu_exec_automaton();
+       ret = dfu_exec_automaton();
+       if (ret != MBED_ERROR_NONE) {
+          /* action to decide */
+       }
    }
+
+the automaton execution may returns:
+
+   * MBED_ERROR_INVSTATE: the command received should not happen in this state of the DFU automaton
+   * MBED_ERROR_TOOBIG:   the input file size is too big
+   * MBED_ERROR_UNSUPPORTED_COMMAND: command received is not supported by the DFU stack configuration
 
 When handling asynchronous read and write, the main loop would look like::
 
@@ -117,5 +127,8 @@ When handling asynchronous read and write, the main loop would look like::
          dfu_store_finished();
          flag_write_finished = false;
       }
-      dfu_exec_automaton();
+      ret = dfu_exec_automaton();
+      if (ret != MBED_ERROR_NONE) {
+         /* action to decide */
+      }
    }
