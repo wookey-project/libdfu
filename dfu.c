@@ -1772,6 +1772,7 @@ mbed_error_t dfu_init(uint8_t **buffer,
         .set_interface_rqst_handler     = NULL,
         .functional_rqst_handler        = dfu_functional_desc_request_handler,
         .mft_string_rqst_handler        = NULL,
+        .reset_handler                  = dfu_reset_device,
     };
     dfu_configuration_desc.functional_desc.wTransferSize = max_size;
     usb_ctrl_init(dfu_usb_ctrl_callbacks, dfu_device_desc, dfu_configuration_desc);

@@ -115,6 +115,21 @@ uint8_t dfu_backend_read(uint8_t *data, uint16_t data_size);
  */
 void dfu_backend_eof(void);
 
+/*
+ * \brief respond to a reset has been received on the line
+ *
+ * When a reset has been received on control endpoint while the DFU state
+ * machine is running, this means that something bad happened. The policy to
+ * handle this reset softly, or hardly (for e.g. by rebooting) is leaving
+ * to the user task, depending on the global device software stack.
+ *
+ * This function is triggered only *after* the enumeration phase, until the
+ * DFU stack is up and running.
+ *
+ */
+void dfu_reset_device(void);
+
+
 
 /***********************************************************
  * libDFU API
