@@ -1524,6 +1524,9 @@ static mbed_error_t dfu_class_execute_request(void)
     {
         return MBED_ERROR_NONE;
     }
+
+    usb_ctrl_set_initphase_done();
+
     enter_critical_section();
     if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
         aprintf("Unable to dequeue command!\n");
