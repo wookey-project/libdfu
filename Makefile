@@ -1,26 +1,34 @@
+###################################################################
+# About the library name and path
+###################################################################
+
+# library name, without extension
 LIB_NAME ?= libdfu
 
+# project root directory, relative to app dir
 PROJ_FILES = ../../
+
+# library name, with extension
 LIB_FULL_NAME = $(LIB_NAME).a
 
-VERSION = 1
-#############################
-
+# SDK helper Makefiles inclusion
 -include $(PROJ_FILES)/Makefile.conf
 -include $(PROJ_FILES)/Makefile.gen
 
 # use an app-specific build dir
 APP_BUILD_DIR = $(BUILD_DIR)/libs/$(LIB_NAME)
 
-CFLAGS += $(LIBS_CFLAGS)
-CFLAGS += -ffreestanding
-CFLAGS += -I$(PROJ_FILES)/include/generated -I$(PROJ_FILES) -I$(PROJ_FILES)/libs/std -I$(PROJ_FILES)/kernel/shared -I.
+###################################################################
+# About the compilation flags
+###################################################################
+
+CFLAGS := $(LIBS_CFLAGS)
 CFLAGS += -MMD -MP -O3
 
-LDFLAGS += -fno-builtin -nostdlib -nostartfiles
-LD_LIBS += -lg
+#############################################################
+# About library sources
+#############################################################
 
-BUILD_DIR ?= $(PROJ_FILE)build
 
 SRC_DIR = .
 SRC = $(wildcard $(SRC_DIR)/*.c)
@@ -34,6 +42,10 @@ OUT_DIRS = $(dir $(OBJ))
 TODEL_CLEAN += $(OBJ)
 # targets
 TODEL_DISTCLEAN += $(APP_BUILD_DIR)
+
+##########################################################
+# generic targets of all libraries makefiles
+##########################################################
 
 .PHONY: app doc
 
@@ -56,9 +68,6 @@ show:
 
 lib: $(APP_BUILD_DIR)/$(LIB_FULL_NAME)
 
-#############################################################
-# build targets (driver, core, SoC, Board... and local)
-# App C sources files
 $(APP_BUILD_DIR)/%.o: %.c
 	$(call if_changed,cc_o_c)
 

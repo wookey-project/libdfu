@@ -22,12 +22,12 @@
  *
  */
 #include "autoconf.h"
-#include "api/types.h"
-#include "api/syscall.h"
-#include "api/stdio.h"
-#include "api/nostd.h"
-#include "api/string.h"
-#include "api/queue.h"
+#include "libc/types.h"
+#include "libc/syscall.h"
+#include "libc/stdio.h"
+#include "libc/nostd.h"
+#include "libc/string.h"
+#include "libc/queue.h"
 #include "api/dfu.h"
 #include "dfu_priv.h"
 #include "usb.h"

@@ -24,10 +24,10 @@
 #ifndef LIBDFU_H
 #define LIBDFU_H
 
-#include "api/types.h"
-#include "api/stdio.h"
-#include "api/nostd.h"
-#include "api/regutils.h"
+#include "libc/types.h"
+#include "libc/stdio.h"
+#include "libc/nostd.h"
+#include "libc/regutils.h"
 #include "usb.h"
 /* usb driver control header */
 #include "usb_control.h"
