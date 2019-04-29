@@ -1,3 +1,5 @@
+.. _lib_dfu_api:
+
 The libDFU API
 --------------
 
@@ -36,13 +38,15 @@ DFU stack to hold firmware chunks during the UPLOAD and DOWNLOAD states.
 The buffer size depend on the task constraints but **must be a multiple of
 the control plane USB URB size** (usually 64 bytes length).
 
-.. info::
+.. note::
    Bigger the buffer is, faster the DFU stack is
 
 Interacting with the storage backend
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Accessing the backend is not under the direct responsability of the DFU stack. Although, the stack need to request backend write and/or read access in DOWNLOAD and UPLOAD states.
+Accessing the backend is not under the direct responsability of the DFU stack.
+Although, the stack need to request backend write and/or read access in
+DOWNLOAD and UPLOAD states.
 
 To allow flexibility in how the storage backend is handled, the task has to
 decrlare the following functions::
@@ -55,19 +59,33 @@ decrlare the following functions::
 
    void dfu_backend_eof(void);
 
-The *dfu_backend_write()* function is called by the DFU stack when a firmware chunk has been received. This function is then responsible of the communication with
-the storage manager (SDIO, EMMC or any storage backend), and should return 0 if the storage has acknowledge correctly the chunk write.
+The *dfu_backend_write()* function is called by the DFU stack when a firmware
+chunk has been received. This function is then responsible of the communication
+with the storage manager (SDIO, EMMC or any storage backend), and should return
+0 if the storage has acknowledge correctly the chunk write.
 
-The *dfu_backend_read()* function is called by the DFU stack when the host is requesting a firmware chunk from the device. In UPLOAD mode, the host is reading sequencially the firmware. The task (and/or the storage manager) is responsible for returning the correct chunk of data for each successive *dfu_backend_read()* call. This an be done, for example, using a base address and a counter.
+The *dfu_backend_read()* function is called by the DFU stack when the host is
+requesting a firmware chunk from the device. In UPLOAD mode, the host is
+reading sequencially the firmware. The task (and/or the storage manager) is
+responsible for returning the correct chunk of data for each successive
+*dfu_backend_read()* call. This an be done, for example, using a base address
+and a counter.
 
-The *dfu_backend_eof()* is called when the host has finished to send the firmware data chunks. The application and the storage manager can decide to execute any action during this event, if needed.
+The *dfu_backend_eof()* is called when the host has finished to send the
+firmware data chunks. The application and the storage manager can decide to
+execute any action during this event, if needed.
 
 .. danger::
-   These functions **must** be defined by the application or the link step will fail to find these three symbols
+   These functions **must** be defined by the application or the link step will
+   fail to find these three symbols
 
-As storage backend access may be slow, the DFU stack can handle asynchronous write and read actions. This is done in the implementation of dfu_backend_write() and dfu_backend_read() where the task has to request asyncrhonous write and/or read (using DMA or IPC for example).
+As storage backend access may be slow, the DFU stack can handle asynchronous
+write and read actions. This is done in the implementation of
+dfu_backend_write() and dfu_backend_read() where the task has to request
+asyncrhonous write and/or read (using DMA or IPC for example).
 
-To inform the DFU stack that the storage access is terminated, two functions are defined in the DFU stack::
+To inform the DFU stack that the storage access is terminated, two functions
+are defined in the DFU stack::
 
    #include "dfu.h"
 
@@ -75,22 +93,27 @@ To inform the DFU stack that the storage access is terminated, two functions are
    void dfu_store_finished(void);
 
 .. caution::
-   When using asynchronous read and write, the task has to update its main loop to detect the end of read and end of write and execute these functions.
+   When using asynchronous read and write, the task has to update its main loop
+   to detect the end of read and end of write and execute these functions.
 
 About the poll timeout
 """"""""""""""""""""""
 
-The Poll timeout defines the minimum period (in milliseconds) of the DFU_GET_STATUS requests of the host. Depending on the write acces cost and the load of the device, this value may vary to avoid usless DFU_GET_STATUS requests to which the DFU stack has to respond a BUSY state.
+The Poll timeout defines the minimum period (in milliseconds) of the
+DFU_GET_STATUS requests of the host. Depending on the write acces cost and the
+load of the device, this value may vary to avoid usless DFU_GET_STATUS requests
+to which the DFU stack has to respond a BUSY state.
 
-If another task is costly in the overall device operating system, this flag can also be increased to avoid timeout.
+If another task is costly in the overall device operating system, this flag can
+also be increased to avoid timeout.
 
 Executing the DFU automaton
 """""""""""""""""""""""""""
 
-The DFU stack automaton is executed in main thread using the following function::
+The DFU stack automaton is executed in main thread using the following
+function ::
 
    #include "dfu.h"
-
    mbed_error_t dfu_exec_automaton(void);
 
 A basic usage of the automaton would be::
@@ -105,9 +128,11 @@ A basic usage of the automaton would be::
 
 the automaton execution may returns:
 
-   * MBED_ERROR_INVSTATE: the command received should not happen in this state of the DFU automaton
+   * MBED_ERROR_INVSTATE: the command received should not happen in this state
+     of the DFU automaton
    * MBED_ERROR_TOOBIG:   the input file size is too big
-   * MBED_ERROR_UNSUPPORTED_COMMAND: command received is not supported by the DFU stack configuration
+   * MBED_ERROR_UNSUPPORTED_COMMAND: command received is not supported by the
+     DFU stack configuration
 
 When handling asynchronous read and write, the main loop would look like::
 
@@ -132,3 +157,4 @@ When handling asynchronous read and write, the main loop would look like::
          /* action to decide */
       }
    }
+
