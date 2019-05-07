@@ -3,6 +3,8 @@
 The DFU stack
 =============
 
+.. contents::
+
 The LibDFU project aim to implement a complete USB DFU (Direct Firmware Update)
 device-side automaton.
 
@@ -14,12 +16,6 @@ libDFU is compatible with the Wookey STM32F439 driver API, and should be easily
 portable with other drivers.
 
 
-.. toctree::
-   :caption: Table of contents
-   :name: mastertoc
-   :maxdepth: 2
-
-   DFU principle <about>
-   libDFU API <api>
-   FAQ <faq>
-
+.. include:: about.rst
+.. include:: api.rst
+.. include:: faq.rst

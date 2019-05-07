@@ -1,5 +1,5 @@
-The libDFU API
---------------
+API
+---
 
 
 The DFU functional API

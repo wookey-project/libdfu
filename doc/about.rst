@@ -1,5 +1,5 @@
-About the DFU protocol
-----------------------
+Overview
+--------
 
 Principles
 """"""""""
