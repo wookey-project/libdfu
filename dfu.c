@@ -1389,7 +1389,6 @@ invalid_transition:
  * main thread
  */
 typedef struct __attribute__((packed)) {
-    uint16_t garbage; /* FIXME 64bytes aligned due to gcc bug in strd usage */
     uint64_t                 timestamp;
     dfu_request_t            request;
     struct usb_setup_packet  setup_packet;
