@@ -1,6 +1,9 @@
 API
 ---
 
+.. highlight:: c
+
+
 
 The DFU functional API
 """"""""""""""""""""""

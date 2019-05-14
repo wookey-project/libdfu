@@ -1,5 +1,8 @@
 .. _lib_dfu:
 
+
+.. highlight:: c
+
 The DFU stack
 =============
 
