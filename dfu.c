@@ -1514,6 +1514,15 @@ static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
  * This function dequeue all the events queued in handler
  * mode, respecting the events order.
  *****************************************************/
+#if __GNUC__ > 8
+/*
+ * INFO: Here, we cast a packed struct address in a uint32_t pointer for memset().
+ * This is *not* an error.
+ * Gcc 9 warning is a false positive.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
+#endif
 static mbed_error_t dfu_class_execute_request(void)
 {
     request_queue_node_t *current_dfu_cmd_p = NULL;
@@ -1622,6 +1631,9 @@ static mbed_error_t dfu_class_execute_request(void)
 err:
     return ret;
 }
+#if __GNUC__ > 8
+#pragma GCC diagnostic pop
+#endif
 
 /*
  * Data out handler, called by the USB stack when the requested data
