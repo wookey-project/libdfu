@@ -28,9 +28,7 @@
 #include "libc/stdio.h"
 #include "libc/nostd.h"
 #include "libc/regutils.h"
-#include "usb.h"
-/* usb driver control header */
-#include "usb_control.h"
+#include "libusbctrl.h"
 
 #define MAX_DFU_CMD_QUEUE_SIZE 8
 
@@ -138,13 +136,12 @@ void dfu_reset_device(void);
 void dfu_leave_session_with_error(const dfu_status_enum_t new_status);
 
 /*
- * Early initialization, declaring the DFU stack. This include the USB
- * stack initialisation. This function must be called before the
- * sys_init(INIT_DONE) call.
- * Request PERM_RES_DEV_BUSES permission.
- * CAUTION: in USB-HS mode, the task must have the MAP_VOLUNTARY permission
+ * Early initialization, declaring the DFU stack.
+ * This *does not* include the USB stack initialisation as the libctrl
+ * initalization is under the responsability of the upper layer (hybrid device
+ * typical case).
  */
-void dfu_early_init(void);
+mbed_error_t dfu_declare(usbctrl_context_t *usb_ctx);
 
 /**
  * @brief initialize the DFU stack
@@ -155,6 +152,12 @@ void dfu_early_init(void);
 mbed_error_t dfu_init(uint8_t **buffer,
                       uint16_t max_size);
 
+
+/*
+ * DFU stack RaZ (except for libusbctrl declarations), typically for
+ * USB reset trigger
+ */
+mbed_error_t dfu_reinit(void);
 /**
  * Run the DFU automaton.
  * This is *not* a loop, as the task may require to support, in the same loop,

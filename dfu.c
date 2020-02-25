@@ -30,27 +30,14 @@
 #include "libc/queue.h"
 #include "api/dfu.h"
 #include "dfu_priv.h"
-#include "usb.h"
 #include "dfu_desc.h"
-#include "usb_control.h"
 #include "libc/sanhandlers.h"
+#include "dfu_context.h"
+#include "libusbctrl.h"
 
-#define USB_DFU_DEBUG 0
+#define USB_DFU_DEBUG 1
 
 extern uint32_t malloc_errno;
-
-/* FIXME: should be get back from USB driver */
-#define MAX_TIME_DETACH     4000
-
-/*
- * The DFU stack context. This is a global variable, which means
- * that the DFU stack is not reentrant (not for dfu_context write access).
- * As most micro-controlers are not multicore based, this should not be
- * a problem.
- */
-static volatile dfu_context_t dfu_context = {0};
-
-static volatile dfu_context_t * const dfu_ctx = &dfu_context;
 
 
 
@@ -70,7 +57,8 @@ static uint8_t read_firmware_data_cmd = 0;
 static volatile bool dfu_usb_read_in_progress = false;
 static volatile bool dfu_usb_write_in_progress = false;
 
-static void dfu_usb_driver_setup_read_status(void){
+static void dfu_usb_driver_setup_read_status(void)
+{
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
 #if USB_DFU_DEBUG
 		aprintf_flush();
@@ -81,7 +69,6 @@ static void dfu_usb_driver_setup_read_status(void){
 #if USB_DFU_DEBUG
 	printf("==> READ dfu_usb_driver_setup_read_status\n");
 #endif
-	usb_driver_setup_read_status();
 	return;
 }
 
@@ -98,7 +85,9 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 	printf("==> READ %d dfu_usb_driver_setup_read %d\n", read_cnt, size);
 #endif
 	read_cnt++;
-	usb_driver_setup_read(dst, size, 0);
+    /* XXX: replace '0' with ep->ep_id */
+    usb_backend_drv_set_recv_fifo(dst, size, 0);
+    usb_backend_drv_activate_endpoint(0, USBOTG_HS_EP_DIR_OUT);
 	return;
 }
 
@@ -114,12 +103,14 @@ static void dfu_usb_driver_stall_out(){
 #if USB_DFU_DEBUG
 	printf("==> SEND dfu_usb_driver_stall_out\n");
 #endif
-	usb_driver_stall_out(0);
+    /* XXX: replace 0 with ep->ep_id */
+    usb_backend_drv_endpoint_stall(0, USB_EP_DIR_OUT);
 	dfu_usb_write_in_progress = false;
 	return;
 }
 
-static void dfu_usb_driver_setup_send_status(int status){
+static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
+{
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
 #if USB_DFU_DEBUG
 		aprintf_flush();
@@ -130,8 +121,9 @@ static void dfu_usb_driver_setup_send_status(int status){
 #if USB_DFU_DEBUG
 	printf("==> SEND dfu_usb_driver_setup_send_status %d\n", status);
 #endif
-	usb_driver_setup_send_status(status);
-	dfu_usb_write_in_progress = false;
+    /* XXX: change 0 with ep->ep_dir */
+    usb_backend_drv_send_zlp(0);
+    dfu_usb_write_in_progress = false;
 	return;
 }
 
@@ -146,7 +138,8 @@ void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 #if USB_DFU_DEBUG
 	printf("==> SEND dfu_usb_driver_setup_send %d\n", size);
 #endif
-	usb_driver_setup_send(src, size, 0);
+    /* XXX: replace 0 with ep->ep_id */
+    usb_backend_drv_send_data((uint8_t *)src, size, 0);
 	return;
 }
 
@@ -350,15 +343,18 @@ static const struct {
  *********************************************/
 
 uint32_t dfu_get_poll_timeout(void){
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     return dfu_ctx->poll_timeout_ms;
 }
 
 
 static inline uint8_t dfu_get_state() {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     return dfu_ctx->state;
 }
 
 static inline uint8_t dfu_get_status() {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     return dfu_ctx->status;
 }
 
@@ -368,12 +364,14 @@ uint8_t dfu_get_status_string_id() {
 }
 
 static inline void dfu_set_status(const dfu_status_enum_t new_status) {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     dfu_ctx->status = new_status;
 }
 
 
 static inline void dfu_set_state(const uint8_t new_state)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     if (new_state == 0xff) {
         printf("PANIC! this should never arrise !");
         while (1) {};
@@ -388,6 +386,7 @@ static inline void dfu_set_state(const uint8_t new_state)
 void dfu_set_poll_timeout(uint32_t t, uint64_t timestamp)
 {
 
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     uint64_t ms;
     uint8_t ret;
 
@@ -501,26 +500,6 @@ static inline void leave_critical_section(void)
  * DFU globals
  *********************************************/
 
-/*
- * DFU functional descriptor, which can be requested by the host
- */
-static volatile dfu_functional_descriptor_t dfu_fct_desc = {
-    .bLength = 0x09,
-    .bDescriptorType = 0x21,
-    .bmAttributes.bitWillDetach = 0,
-    .bmAttributes.bitManifestationTolerant = 1,
-#if CONFIG_USR_LIB_DFU_CAN_UPLOAD
-    .bmAttributes.bitCanUpload = 1,
-#else
-    .bmAttributes.bitCanUpload = 0,
-#endif
-    .bmAttributes.bitCanDnload = 1,
-    .wDetachTimeOut = MAX_TIME_DETACH,
-    .wTransferSize = 0, /*set at init */
-    .bcdDFUVersion = 0x0101
-};
-
-
 typedef struct {
     uint16_t id;
     uint32_t size;
@@ -595,24 +574,6 @@ static void dfu_release_block(dfu_data_block_t *b)
 
 
 
-static void dfu_functional_desc_request_handler(uint16_t wLength)
-{
-    if ( wLength == 0 ){
-        dfu_usb_driver_setup_send_status(0);
-        dfu_usb_driver_setup_read_status();
-        return;
-    }
-
-    if ( wLength >  dfu_fct_desc.bLength) {
-        dfu_usb_driver_setup_send((uint8_t *)&dfu_fct_desc, dfu_fct_desc.bLength);
-    }else{
-        dfu_usb_driver_setup_send((uint8_t *)&dfu_fct_desc, wLength);
-    }
-
-    dfu_usb_driver_setup_read_status();
-}
-
-
 static uint8_t dfu_validate_suffix(dfu_suffix_t * dfu_suffix __attribute__((unused)))
 {
     // TODO
@@ -646,8 +607,7 @@ static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
  */
 static void dfu_store_data(void)
 {
-    //uint16_t size = dfu_ctx->data_out_length;
-    //uint16_t blocknum = dfu_ctx->current_block_offset;
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
 
     if (dfu_get_state() != DFUDNBUSY && dfu_get_state() != DFUDNLOAD_SYNC) {
         /* should not happend out of these two states. In that very case,
@@ -666,6 +626,7 @@ static void dfu_store_data(void)
 
 static void dfu_load_data(void)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* INFO: size is given by setup packet but the block number is not
      * managed by the host, which only manage a file size */
     if (dfu_get_state() != DFUUPLOAD_IDLE) {
@@ -694,6 +655,7 @@ static void dfu_load_data(void)
  */
 void dfu_store_finished(void)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /*
     Should be updated by the main loop. If upper layer received async IPC
     saying that data has been stored, then update these fields:
@@ -710,6 +672,7 @@ void dfu_store_finished(void)
  */
 void dfu_load_finished(uint16_t bytes_read)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
 
     /* Here we should send the data stored in the buffer by the app into
      * the USB IP (upload mode) and then set block_in_progress as false
@@ -751,6 +714,7 @@ void dfu_load_finished(uint16_t bytes_read)
  */
 static void dfu_handle_dnbusy_timeout(void)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
 
     if (dfu_get_state() == DFUDNBUSY) {
         uint64_t ms;
@@ -777,7 +741,7 @@ err:
 /*
  * Handle DFU_DETACH event
  */
-mbed_error_t dfu_request_detach(struct usb_setup_packet *setup_packet)
+mbed_error_t dfu_request_detach(usbctrl_setup_pkt_t *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -811,8 +775,9 @@ invalid_transition:
 /*
  * Handle DFU_DNLOAD event
  */
-mbed_error_t dfu_request_dnload(struct usb_setup_packet *setup_packet)
+mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* Sanity check */
     if(setup_packet == NULL){
         goto invalid_transition;
@@ -829,8 +794,8 @@ mbed_error_t dfu_request_dnload(struct usb_setup_packet *setup_packet)
     switch (dfu_get_state()) {
         case DFUIDLE:
             {
-                if (   dfu_fct_desc.bmAttributes.bitCanDnload != 1
-                        || setup_packet->wLength                  == 0)
+                if (   dfu_ctx->can_download != true
+                    || setup_packet->wLength                  == 0)
                 {
                     goto download_not_supported;
                 }
@@ -918,6 +883,7 @@ size_too_big:
 
 void dfu_leave_session_with_error(const dfu_status_enum_t new_status)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     enter_critical_section();
     dfu_set_state(DFUERROR);
     if (dfu_ctx->block_in_progress) {
@@ -930,8 +896,9 @@ void dfu_leave_session_with_error(const dfu_status_enum_t new_status)
 /*
  * Handle DFU_UPLOAD event
  */
-mbed_error_t dfu_request_upload(struct usb_setup_packet *setup_packet)
+mbed_error_t dfu_request_upload(usbctrl_setup_pkt_t *setup_packet)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* Sanity check */
     if(setup_packet == NULL){
         goto invalid_transition;
@@ -982,7 +949,7 @@ mbed_error_t dfu_request_upload(struct usb_setup_packet *setup_packet)
             }
         case DFUIDLE:
             {
-                if (dfu_fct_desc.bmAttributes.bitCanUpload != 1)
+                if (dfu_ctx->can_upload != true)
                 {
                     goto upload_not_supported;
                 } else {
@@ -1033,8 +1000,9 @@ size_too_big:
 /*
  * Handle DFU_GETSTATUS event
  */
-mbed_error_t dfu_request_getstatus(struct usb_setup_packet *setup_packet, uint64_t timestamp)
+mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t timestamp)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* Sanity check */
     if(setup_packet == NULL){
         goto invalid_transition;
@@ -1236,11 +1204,14 @@ invalid_transition:
     return MBED_ERROR_INVSTATE;
 }
 
+
+
 /*
  * Handle DFU_CLEAR_STATUS event
  */
-mbed_error_t dfu_request_clrstatus(struct usb_setup_packet *setup_packet)
+mbed_error_t dfu_request_clrstatus(usbctrl_setup_pkt_t *setup_packet)
 {
+    volatile dfu_context_t *dfu_ctx = dfu_get_context();
     /* Sanity check */
     if(setup_packet == NULL){
         goto invalid_transition;
@@ -1255,7 +1226,7 @@ mbed_error_t dfu_request_clrstatus(struct usb_setup_packet *setup_packet)
     next_state = dfu_next_state(dfu_get_state(), setup_packet->bRequest);
 
     /* effective transition execution (if needed) */
-    dfu_init_context();
+    dfu_init_context(dfu_ctx);
     dfu_set_state(next_state);
     dfu_usb_driver_setup_send_status(0);
     return MBED_ERROR_NONE;
@@ -1270,7 +1241,7 @@ invalid_transition:
 /*
  * Handle DFU_GETSTATE event
  */
-mbed_error_t dfu_request_getstate(struct usb_setup_packet *setup_packet)
+mbed_error_t dfu_request_getstate(usbctrl_setup_pkt_t *setup_packet)
 {
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1317,8 +1288,9 @@ invalid_transition:
 /*
  * Handle DFU_ABORT event
  */
-int dfu_request_abort(struct usb_setup_packet *setup_packet)
+int dfu_request_abort(usbctrl_setup_pkt_t *setup_packet)
 {
+    volatile dfu_context_t *dfu_ctx = dfu_get_context();
     /* Sanity check */
     if(setup_packet == NULL){
         goto invalid_transition;
@@ -1341,7 +1313,7 @@ int dfu_request_abort(struct usb_setup_packet *setup_packet)
         case DFUUPLOAD_IDLE:
             {
                 /* effective transition execution (if needed) */
-                dfu_init_context();
+                dfu_init_context(dfu_ctx);
                 dfu_set_state(next_state);
                 dfu_usb_driver_setup_send_status(0);
                 break;
@@ -1392,7 +1364,7 @@ invalid_transition:
 typedef struct __attribute__((packed)) {
     uint64_t                 timestamp;
     dfu_request_t            request;
-    struct usb_setup_packet  setup_packet;
+    usbctrl_setup_pkt_t  setup_packet;
 } request_queue_node_t;
 
 struct queue *dfu_cmd_queue = NULL;
@@ -1410,22 +1382,25 @@ static volatile unsigned int dfu_cmd_queue_empty = 1;
  * requests and handle the DFU automaton. This ISR function
  * is keeped simple and without any external I/O
  *****************************************************/
-static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
+static mbed_error_t dfu_class_parse_request(struct usbctrl_context  *ctx __attribute__((unused)),
+                                            usbctrl_setup_pkt_t *setup_packet)
 {
     uint8_t ret;
-    mbed_error_t err;
+    mbed_error_t errcode = MBED_ERROR_NONE;
     uint64_t ms;
 
     /* Sanity check */
     if(setup_packet == NULL){
         aprintf("NULL packet\n");
-        return;
+        errcode = MBED_ERROR_INVPARAM;
+        goto err;
     }
 
     ret = sys_get_systick(&ms, PREC_MILLI);
     if (ret != SYS_E_DONE) {
         aprintf("timestamping error\n");
-        return;
+        errcode = MBED_ERROR_INVCREDENCIALS;
+        goto err;
     }
     request_queue_node_t *cur_req = NULL;
 
@@ -1442,10 +1417,10 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
      */
     if (setup_packet->bRequest > USB_RQST_DFU_ABORT) {
 #if USB_DFU_DEBUG
-        aprintf("dfu: %s: unknown request\n", __func__);
+        printf("dfu: %s: unknown request\n", __func__);
 #endif
-        dfu_error(ERRUNKNOWN);
-        return;
+        errcode = MBED_ERROR_UNSUPORTED_CMD;
+        goto err;
     }
 
     /*
@@ -1454,34 +1429,36 @@ static void dfu_class_parse_request(struct usb_setup_packet *setup_packet)
      * requests enquing
      */
 #if USB_DFU_DEBUG
-    aprintf("[handler mode] ENQUEUINQ => state %s, req %s\n", print_state_name(dfu_get_state()), print_request_name(setup_packet->bRequest));
+    printf("[handler mode] ENQUEUINQ => state %s, req %s\n", print_state_name(dfu_get_state()), print_request_name(setup_packet->bRequest));
 #endif
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
     if(ret) {
-        aprintf("Error while allocating queue !!!\n");
+        printf("Error while allocating queue !!!\n");
+        errcode = MBED_ERROR_NOMEM;
         dfu_error(ERRUNKNOWN);
-        return;
+        goto err;
     }
 
 #if USB_DFU_DEBUG
-    aprintf("req: %s\n", print_request_name(setup_packet->bRequest));
+    printf("req: %s\n", print_request_name(setup_packet->bRequest));
 #endif
     cur_req->request = setup_packet->bRequest;
     cur_req->timestamp = ms;
-    memcpy((void*)&cur_req->setup_packet, setup_packet, sizeof(struct usb_setup_packet));
+    memcpy((void*)&cur_req->setup_packet, setup_packet, sizeof(usbctrl_setup_pkt_t));
     /*
      * Enqueue and set queue as not empty
      */
-    err = queue_enqueue(dfu_cmd_queue, cur_req);
-    if (err == MBED_ERROR_BUSY) {
-        aprintf("[ISR] Error! queue is busy!\n");
+    errcode = queue_enqueue(dfu_cmd_queue, cur_req);
+    if (errcode == MBED_ERROR_BUSY) {
+        printf("[ISR] Error! queue is busy!\n");
     }
-if (err == MBED_ERROR_NOMEM) {
-        aprintf("[ISR] Error! queue is full!\n");
+if (errcode == MBED_ERROR_NOMEM) {
+        printf("[ISR] Error! queue is full!\n");
     }
     dfu_cmd_queue_empty = 0;
 
-    return;
+err:
+    return errcode;
 }
 
 /******************************************************
@@ -1534,8 +1511,6 @@ static mbed_error_t dfu_class_execute_request(void)
         return MBED_ERROR_NONE;
     }
 
-    usb_ctrl_set_initphase_done();
-
     enter_critical_section();
     if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
         aprintf("Unable to dequeue command!\n");
@@ -1561,7 +1536,7 @@ static mbed_error_t dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_DETACH\n");
 #endif
-            if((ret = dfu_request_detach((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet)))) {
+            if((ret = dfu_request_detach((usbctrl_setup_pkt_t*)((void*)&current_dfu_cmd.setup_packet)))) {
                 goto err;
             }
             break;
@@ -1570,7 +1545,7 @@ static mbed_error_t dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_DNLOAD\n");
 #endif
-            if((ret = dfu_request_dnload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet)))) {
+            if((ret = dfu_request_dnload((usbctrl_setup_pkt_t*)((void*)&current_dfu_cmd.setup_packet)))) {
                 goto err;
             }
             break;
@@ -1579,7 +1554,7 @@ static mbed_error_t dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_UPLOAD\n");
 #endif
-            if((ret = dfu_request_upload((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet)))) {
+            if((ret = dfu_request_upload((usbctrl_setup_pkt_t*)((void*)&current_dfu_cmd.setup_packet)))) {
                 goto err;
             }
             break;
@@ -1588,7 +1563,7 @@ static mbed_error_t dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATUS\n");
 #endif
-            if((ret = dfu_request_getstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet), current_dfu_cmd.timestamp))) {
+            if((ret = dfu_request_getstatus((usbctrl_setup_pkt_t*)((void*)&current_dfu_cmd.setup_packet), current_dfu_cmd.timestamp))) {
                 goto err;
             }
             break;
@@ -1597,7 +1572,7 @@ static mbed_error_t dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_CLEAR_STATUS\n");
 #endif
-            if((ret = dfu_request_clrstatus((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet)))) {
+            if((ret = dfu_request_clrstatus((usbctrl_setup_pkt_t*)((void*)&current_dfu_cmd.setup_packet)))) {
                 goto err;
             }
             break;
@@ -1606,7 +1581,7 @@ static mbed_error_t dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_GET_STATE\n");
 #endif
-            if((ret = dfu_request_getstate((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet)))) {
+            if((ret = dfu_request_getstate((usbctrl_setup_pkt_t*)((void*)&current_dfu_cmd.setup_packet)))) {
                 goto err;
             }
             break;
@@ -1615,7 +1590,7 @@ static mbed_error_t dfu_class_execute_request(void)
 #if USB_DFU_DEBUG
             printf("DFU_GET_ABORT\n");
 #endif
-            if((ret = dfu_request_abort((struct usb_setup_packet*)((void*)&current_dfu_cmd.setup_packet)))) {
+            if((ret = dfu_request_abort((usbctrl_setup_pkt_t*)((void*)&current_dfu_cmd.setup_packet)))) {
                 goto err;
             }
             break;
@@ -1641,11 +1616,18 @@ err:
  * configured during the dfu_request_dnload() in the USB stack has been
  * received in the USB device FIFO and copied in the task's buffer.
  */
-static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
+static mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
+                                         uint32_t size __attribute__((unused)),
+                                         uint8_t ep_id __attribute__((unused)))
 {
+    mbed_error_t errcode = MBED_ERROR_NONE;
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
 #if USB_DFU_DEBUG
     aprintf("end of USB read\n");
 #endif
+    /* FIXME: size passed here should be checked in comparison with
+     * the size passed in the previous request */
+
     /* all data received from host. This handler is executed by the lower
      * USB stack at the end of the effective usb_status_read() call.
      * Here, we set a flag to request the main thread to effetively copy the
@@ -1655,14 +1637,19 @@ static void dfu_data_out_handler(uint32_t size __attribute__((unused)))
      ready_for_data_receive = true;
      dfu_usb_read_in_progress = false;
      dfu_ctx->data_to_store = true;
+     return errcode;
 }
 
 /*
  * Data in handler, called by the USB stack when the task's fifo has been
  * fully read by the USB device in its own FIFO and sent to the host.
  */
-static void dfu_data_in_handler(void)
+static mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
+                                        uint32_t size __attribute__((unused)),
+                                        uint8_t ep_id __attribute__((unused)))
 {
+    mbed_error_t errcode = MBED_ERROR_NONE;
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
 #if USB_DFU_DEBUG
     aprintf("[ISR] end of USB write\n");
 #endif
@@ -1679,6 +1666,7 @@ static void dfu_data_in_handler(void)
         dfu_ctx->poll_start = 0;
         dfu_set_poll_timeout(0, 0);
     }
+     return errcode;
 }
 
 
@@ -1688,6 +1676,7 @@ static void dfu_data_in_handler(void)
 
 mbed_error_t dfu_exec_automaton(void)
 {
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* handle end of DNBUSY state */
     dfu_handle_dnbusy_timeout();
 #if USB_DFU_DEBUG
@@ -1723,43 +1712,46 @@ err:
  * Init functions
  **************************************************/
 
-void dfu_init_context(void)
-{
-    uint16_t transfert_size = dfu_context.transfert_size ? dfu_context.transfert_size : 0;
-    uint8_t  **buffer = dfu_context.data_out_buffer ? dfu_context.data_out_buffer : 0;
 
-    dfu_context.block_in_progress = 0;
-    dfu_context.session_in_progress = 0;
-    dfu_context.status = OK;
-    dfu_context.state = DFUIDLE;
-    dfu_context.data_out_buffer = (uint8_t**)buffer;
-    dfu_context.data_out_current_block_nb = 0;
-    dfu_context.data_out_nb_blocks = 0;
-    dfu_context.data_out_length = 0;
-    dfu_context.data_in_buffer = (uint8_t**)buffer;
-    dfu_context.data_in_nb_blocks = 0;
-    dfu_context.data_in_current_block_nb = 0;
-    dfu_context.data_in_length = 0;
-    dfu_context.flash_address = 0x80000000;
-    dfu_context.detach_timeout_ms = MAX_TIME_DETACH;
-    dfu_context.detach_timeout_start = 0;
-    dfu_context.poll_timeout_ms = MAX_POLL_TIMEOUT;
-    dfu_context.poll_start = 0;
-    dfu_context.block_size = transfert_size;
-    dfu_context.transfert_size = transfert_size;
-    dfu_context.firmware_size = 0;
-    dfu_context.current_block_offset = 0;
-    dfu_context.data_to_store = false;
-    dfu_context.data_to_load  = false;
-}
-
-
-void dfu_early_init(void)
+mbed_error_t dfu_declare(usbctrl_context_t *usb_ctx)
 {
     /* Register our callbacks */
     ADD_LOC_HANDLER(dfu_data_out_handler)
     ADD_LOC_HANDLER(dfu_data_in_handler)
-    usb_driver_early_init(dfu_data_out_handler, dfu_data_in_handler);
+    ADD_LOC_HANDLER(dfu_class_parse_request)
+    ADD_LOC_HANDLER(dfu_get_descriptor)
+
+    volatile dfu_context_t * dfu_ctx = dfu_get_context();
+    /* initialize DFU level context content */
+    dfu_init_context(dfu_ctx);
+
+    /* initialize libusbctrl interface in DFU context */
+    dfu_ctx->iface.usb_class = USB_CLASS_DFU;
+    dfu_ctx->iface.usb_subclass = USB_SUBCLASS_DFU;
+    dfu_ctx->iface.usb_protocol = USB_PROTOCOL_DFU_DFU;
+    dfu_ctx->iface.dedicated = false;
+    dfu_ctx->iface.rqst_handler = dfu_class_parse_request;
+    dfu_ctx->iface.class_desc_handler = dfu_get_descriptor;
+    dfu_ctx->iface.usb_ep_number = 2;
+
+    dfu_ctx->iface.eps[0].type        = USB_EP_TYPE_CONTROL;
+    dfu_ctx->iface.eps[0].dir         = USB_EP_DIR_OUT;
+    dfu_ctx->iface.eps[0].attr        = USB_EP_ATTR_NO_SYNC;
+    dfu_ctx->iface.eps[0].usage       = USB_EP_USAGE_DATA;
+    dfu_ctx->iface.eps[0].pkt_maxsize = 64; /* mpsize on EP0 (standard on USB 1.1, 2.0) */
+    dfu_ctx->iface.eps[0].ep_num      = 0; /* this may be updated by libctrl */
+    dfu_ctx->iface.eps[0].handler     = dfu_data_out_handler;
+
+    dfu_ctx->iface.eps[1].type        = USB_EP_TYPE_CONTROL;
+    dfu_ctx->iface.eps[1].dir         = USB_EP_DIR_IN;
+    dfu_ctx->iface.eps[1].attr        = USB_EP_ATTR_NO_SYNC;
+    dfu_ctx->iface.eps[1].usage       = USB_EP_USAGE_DATA;
+    dfu_ctx->iface.eps[1].pkt_maxsize = 64; /* mpsize on EP0 (standard on USB 1.1, 2.0) */
+    dfu_ctx->iface.eps[1].ep_num      = 0; /* this may be updated by libctrl */
+    dfu_ctx->iface.eps[1].handler     = dfu_data_in_handler;
+
+    /* declare interface against libsubctrl */
+    return usbctrl_declare_interface(usb_ctx, (usbctrl_interface_t*)&dfu_ctx->iface);
 }
 
 
@@ -1767,8 +1759,8 @@ mbed_error_t dfu_init(uint8_t **buffer,
                       uint16_t max_size)
 {
 
+    volatile dfu_context_t *dfu_ctx = dfu_get_context();
     mbed_error_t err;
-    usb_driver_map();
 #ifdef CONFIG_STD_MALLOC_LIGHT
     wmalloc_init();
 
@@ -1777,34 +1769,15 @@ mbed_error_t dfu_init(uint8_t **buffer,
         printf("Unable to create queue !\n");
         return err;
     }
-    //wmalloc(DFU_DATA_QUEUE_MAX_SIZE*sizeof(uint8_t), ALLOC_NORMAL);
-    //	wmalloc_init(heap_base, DFU_DATA_QUEUE_MAX_SIZE);
 #endif
 
     printf("Initializing DFU Layer\n");
-    /* Register our handlers */
-    ADD_LOC_HANDLER(dfu_class_parse_request)
-    ADD_LOC_HANDLER(dfu_functional_desc_request_handler)
-    ADD_LOC_HANDLER(dfu_reset_device)
-    usb_ctrl_callbacks_t dfu_usb_ctrl_callbacks = { // FIXME Replace handler pointers
-        .class_rqst_handler             = dfu_class_parse_request,
-        .vendor_rqst_handler            = NULL,
-        .set_configuration_rqst_handler = NULL,
-        .set_interface_rqst_handler     = NULL,
-        .functional_rqst_handler        = dfu_functional_desc_request_handler,
-        .mft_string_rqst_handler        = NULL,
-        .reset_handler                  = dfu_reset_device,
-    };
-    dfu_configuration_desc.functional_desc.wTransferSize = max_size;
-    usb_ctrl_init(dfu_usb_ctrl_callbacks, dfu_device_desc, dfu_configuration_desc);
     /*
      * registering callbacks for read and write events actions
      * These callbacks are used to execute upper-layer handlers when a read
      * (upload) or a a write (download) action is requested, to execute
      * project specific events such as IPC, mass-storage write, etc.)
      */
-    printf("initializing buffer to %x, size %x\n", buffer, max_size);
-    dfu_fct_desc.wTransferSize = max_size;
 
 /* if max_size is less than 64 or not a power of 2, it is an error */
     if (     (max_size < 64)
@@ -1812,12 +1785,20 @@ mbed_error_t dfu_init(uint8_t **buffer,
     {
         printf("max_size %x is invalid\n", max_size);
     }
-
-    dfu_init_context();
-    dfu_context.data_out_buffer = buffer;
-    dfu_context.data_in_buffer = buffer;
-    dfu_context.block_size = 0;
-    dfu_context.transfert_size = max_size;
-    usb_driver_init();
+    dfu_ctx->data_out_buffer = buffer;
+    dfu_ctx->data_in_buffer = buffer;
+    dfu_ctx->block_size = 0;
+    dfu_ctx->transfert_size = max_size;
     return MBED_ERROR_NONE;
 }
+
+mbed_error_t dfu_reinit(void)
+{
+    volatile dfu_context_t *dfu_ctx = dfu_get_context();
+    /* effective transition execution (if needed) */
+    dfu_init_context(dfu_ctx);
+    dfu_set_state(DFUIDLE);
+    return MBED_ERROR_NONE;
+}
+
+
