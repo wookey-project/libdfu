@@ -69,6 +69,7 @@ static void dfu_usb_driver_setup_read_status(void)
 #if USB_DFU_DEBUG
 	printf("==> READ dfu_usb_driver_setup_read_status\n");
 #endif
+    usb_backend_drv_endpoint_clear_nak(EP0, USB_EP_DIR_OUT);
 	return;
 }
 
