@@ -35,7 +35,7 @@
 #include "dfu_context.h"
 #include "libusbctrl.h"
 
-#define USB_DFU_DEBUG 1
+#define USB_DFU_DEBUG 0
 
 extern uint32_t malloc_errno;
 
@@ -60,12 +60,10 @@ static volatile bool dfu_usb_write_in_progress = false;
 static void dfu_usb_driver_setup_read_status(void)
 {
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-#if USB_DFU_DEBUG
-		aprintf_flush();
-#endif
 		continue;
 	}
-	dfu_usb_read_in_progress = true;
+    // XXX: PTH: not for status read (i.e. clear NAK only)
+	//dfu_usb_read_in_progress = true;
 #if USB_DFU_DEBUG
 	printf("==> READ dfu_usb_driver_setup_read_status\n");
 #endif
@@ -76,9 +74,6 @@ static void dfu_usb_driver_setup_read_status(void)
 static volatile uint32_t read_cnt = 0;
 void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-#if USB_DFU_DEBUG
-		aprintf_flush();
-#endif
 		continue;
 	}
 	dfu_usb_read_in_progress = true;
@@ -95,9 +90,6 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 
 static void dfu_usb_driver_stall_out(){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-#if USB_DFU_DEBUG
-		aprintf_flush();
-#endif
 		continue;
 	}
 	dfu_usb_write_in_progress = true;
@@ -113,9 +105,6 @@ static void dfu_usb_driver_stall_out(){
 static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 {
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-#if USB_DFU_DEBUG
-		aprintf_flush();
-#endif
 		continue;
 	}
 	dfu_usb_write_in_progress = true;
@@ -130,9 +119,6 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 
 void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-#if USB_DFU_DEBUG
-		aprintf_flush();
-#endif
 		continue;
 	}
 	dfu_usb_write_in_progress = true;
@@ -141,6 +127,7 @@ void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 #endif
     /* XXX: replace 0 with ep->ep_id */
     usb_backend_drv_send_data((uint8_t *)src, size, 0);
+    usb_backend_drv_endpoint_clear_nak(0, USBOTG_HS_EP_DIR_OUT);
 	return;
 }
 
@@ -656,6 +643,9 @@ static void dfu_load_data(void)
  */
 void dfu_store_finished(void)
 {
+#if USB_DFU_DEBUG
+    printf("%s\n", __func__);
+#endif
     volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /*
     Should be updated by the main loop. If upper layer received async IPC
@@ -684,6 +674,9 @@ void dfu_load_finished(uint16_t bytes_read)
      * smaller than the one requested, the host considering that the upload is
      * finished. bytes_read here is given by the DFU handling application depending
      * on the number of bytes read for this chunk by the storage backend.
+     */
+    /*
+     * XXX: FIXME: no fragmentation here ! done by libusbctrl !!!
      */
     dfu_usb_driver_setup_send(dfu_ctx->data_in_buffer, bytes_read);
     if (bytes_read < dfu_ctx->data_in_length) {
@@ -778,9 +771,13 @@ invalid_transition:
  */
 mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
 {
+#if USB_DFU_DEBUG
+    printf("%s\n", __func__);
+#endif
     volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* Sanity check */
     if(setup_packet == NULL){
+        printf("invalid setup pkt NULL\n");
         goto invalid_transition;
     }
     /* Sanity check and next state detection */
@@ -1003,6 +1000,9 @@ size_too_big:
  */
 mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t timestamp)
 {
+#if USB_DFU_DEBUG
+    printf("%s\n", __func__);
+#endif
     volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1392,14 +1392,14 @@ static mbed_error_t dfu_class_parse_request(struct usbctrl_context  *ctx __attri
 
     /* Sanity check */
     if(setup_packet == NULL){
-        aprintf("NULL packet\n");
+        printf("NULL packet\n");
         errcode = MBED_ERROR_INVPARAM;
         goto err;
     }
 
     ret = sys_get_systick(&ms, PREC_MILLI);
     if (ret != SYS_E_DONE) {
-        aprintf("timestamping error\n");
+        printf("timestamping error\n");
         errcode = MBED_ERROR_INVCREDENCIALS;
         goto err;
     }
@@ -1514,7 +1514,7 @@ static mbed_error_t dfu_class_execute_request(void)
 
     enter_critical_section();
     if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
-        aprintf("Unable to dequeue command!\n");
+        printf("Unable to dequeue command!\n");
         leave_critical_section();
 	return MBED_ERROR_NOSTORAGE;
     }
@@ -1624,7 +1624,7 @@ static mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused))
     mbed_error_t errcode = MBED_ERROR_NONE;
     volatile dfu_context_t * dfu_ctx = dfu_get_context();
 #if USB_DFU_DEBUG
-    aprintf("end of USB read\n");
+    printf("end of USB read\n");
 #endif
     /* FIXME: size passed here should be checked in comparison with
      * the size passed in the previous request */
@@ -1652,7 +1652,7 @@ static mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
     mbed_error_t errcode = MBED_ERROR_NONE;
     volatile dfu_context_t * dfu_ctx = dfu_get_context();
 #if USB_DFU_DEBUG
-    aprintf("[ISR] end of USB write\n");
+    printf("[ISR] end of USB write\n");
 #endif
     /* USB IP write access is now finished */
     dfu_usb_write_in_progress = false;
@@ -1680,9 +1680,6 @@ mbed_error_t dfu_exec_automaton(void)
     volatile dfu_context_t * dfu_ctx = dfu_get_context();
     /* handle end of DNBUSY state */
     dfu_handle_dnbusy_timeout();
-#if USB_DFU_DEBUG
-    aprintf_flush();
-#endif
     if (dfu_ctx->data_to_store == true) {
         /* request data store. Effective data store is not synchronous and
          * has to be acknowledge using dfu_store_finished() on the upper layer.
@@ -1691,17 +1688,10 @@ mbed_error_t dfu_exec_automaton(void)
         dfu_store_data();
     }
 
-#if USB_DFU_DEBUG
-    aprintf_flush();
-#endif
     /* all DFU automaton execution */
     if(dfu_class_execute_request()){
         goto err;
     }
-#if USB_DFU_DEBUG
-    aprintf_flush();
-#endif
-
     return 0;
 
 err:
