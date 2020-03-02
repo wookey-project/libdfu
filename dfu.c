@@ -83,7 +83,7 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 	read_cnt++;
     /* XXX: replace '0' with ep->ep_id */
     usb_backend_drv_set_recv_fifo(dst, size, 0);
-    usb_backend_drv_activate_endpoint(0, USBOTG_HS_EP_DIR_OUT);
+    usb_backend_drv_activate_endpoint(0, USB_BACKEND_DRV_EP_DIR_OUT);
 	return;
 }
 
@@ -127,7 +127,7 @@ void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 #endif
     /* XXX: replace 0 with ep->ep_id */
     usb_backend_drv_send_data((uint8_t *)src, size, 0);
-    usb_backend_drv_ack(0, USBOTG_HS_EP_DIR_OUT);
+    usb_backend_drv_ack(0, USB_BACKEND_DRV_EP_DIR_OUT);
 	return;
 }
 
