@@ -1,7 +1,7 @@
 config USR_LIB_DFU
   bool  "userspace USB DFU protocol stack"
   default y
-  select USR_DRV_USB
+  select USR_LIB_USBCTRL
   ---help---
   Support for Device Firmware Update protocol stack.
 

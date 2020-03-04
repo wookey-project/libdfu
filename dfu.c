@@ -1381,7 +1381,7 @@ static volatile unsigned int dfu_cmd_queue_empty = 1;
  * requests and handle the DFU automaton. This ISR function
  * is keeped simple and without any external I/O
  *****************************************************/
-static mbed_error_t dfu_class_parse_request(struct usbctrl_context  *ctx __attribute__((unused)),
+static mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unused)),
                                             usbctrl_setup_pkt_t *setup_packet)
 {
     uint8_t ret;
@@ -1702,7 +1702,7 @@ err:
  **************************************************/
 
 
-mbed_error_t dfu_declare(usbctrl_context_t *usb_ctx)
+mbed_error_t dfu_declare(uint32_t usbdci_handler)
 {
     /* Register our callbacks */
     ADD_LOC_HANDLER(dfu_data_out_handler)
@@ -1740,7 +1740,7 @@ mbed_error_t dfu_declare(usbctrl_context_t *usb_ctx)
     dfu_ctx->iface.eps[1].handler     = dfu_data_in_handler;
 
     /* declare interface against libsubctrl */
-    return usbctrl_declare_interface(usb_ctx, (usbctrl_interface_t*)&dfu_ctx->iface);
+    return usbctrl_declare_interface(usbdci_handler, (usbctrl_interface_t*)&dfu_ctx->iface);
 }
 
 
