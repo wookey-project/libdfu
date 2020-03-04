@@ -35,18 +35,14 @@
  */
 mbed_error_t      dfu_get_descriptor(uint8_t            *buf,
                                      uint32_t           *desc_size,
-                                     struct usbctrl_context  *ctx)
+                                     uint32_t            usbdci_handler __attribute__((unused)))
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
     volatile dfu_context_t *dfuctx = dfu_get_context();
 
     /* sanitation */
-    if (buf == NULL || desc_size == NULL || ctx == NULL) {
+    if (buf == NULL || desc_size == NULL) {
         errcode = MBED_ERROR_INVPARAM;
-        goto err;
-    }
-    if (ctx == NULL) {
-        errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
     if (*desc_size < sizeof(dfu_class_functional_descriptor_t)) {

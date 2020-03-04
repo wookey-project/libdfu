@@ -141,7 +141,7 @@ void dfu_leave_session_with_error(const dfu_status_enum_t new_status);
  * initalization is under the responsability of the upper layer (hybrid device
  * typical case).
  */
-mbed_error_t dfu_declare(usbctrl_context_t *usb_ctx);
+mbed_error_t dfu_declare(uint32_t usbdci_handler);
 
 /**
  * @brief initialize the DFU stack
