@@ -67,7 +67,8 @@ typedef struct __packed {
  * \brief Configuration descriptor
  *
  */
-mbed_error_t      dfu_get_descriptor(uint8_t            *buf,
+mbed_error_t      dfu_get_descriptor(uint8_t             iface_id __attribute__((unused)),
+                                     uint8_t            *buf,
                                      uint32_t           *desc_size,
                                      uint32_t            usbdci_handler __attribute__((unused)));
 #endif /* !_DFU_DESC_H */
