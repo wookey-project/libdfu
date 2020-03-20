@@ -33,13 +33,16 @@
  * This functions respects the libusbctrl class level descriptor getter API,
  * as defined in libusbctrl.h.
  */
-mbed_error_t      dfu_get_descriptor(uint8_t            *buf,
+mbed_error_t      dfu_get_descriptor(uint8_t             iface_id __attribute__((unused)),
+                                     uint8_t            *buf,
                                      uint32_t           *desc_size,
                                      uint32_t            usbdci_handler __attribute__((unused)))
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
     volatile dfu_context_t *dfuctx = dfu_get_context();
 
+    /* DFU CLASS does not support multiple DFU interfaces in the same time,
+     * iface_id is ignored */
     /* sanitation */
     if (buf == NULL || desc_size == NULL) {
         errcode = MBED_ERROR_INVPARAM;
