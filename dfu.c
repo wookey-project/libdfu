@@ -33,6 +33,7 @@
 #include "usb.h"
 #include "dfu_desc.h"
 #include "usb_control.h"
+#include "libc/sanhandlers.h"
 
 #define USB_DFU_DEBUG 0
 
@@ -1755,6 +1756,9 @@ void dfu_init_context(void)
 
 void dfu_early_init(void)
 {
+    /* Register our callbacks */
+    ADD_LOC_HANDLER(dfu_data_out_handler)
+    ADD_LOC_HANDLER(dfu_data_in_handler)
     usb_driver_early_init(dfu_data_out_handler, dfu_data_in_handler);
 }
 
@@ -1778,6 +1782,10 @@ mbed_error_t dfu_init(uint8_t **buffer,
 #endif
 
     printf("Initializing DFU Layer\n");
+    /* Register our handlers */
+    ADD_LOC_HANDLER(dfu_class_parse_request)
+    ADD_LOC_HANDLER(dfu_functional_desc_request_handler)
+    ADD_LOC_HANDLER(dfu_reset_device)
     usb_ctrl_callbacks_t dfu_usb_ctrl_callbacks = { // FIXME Replace handler pointers
         .class_rqst_handler             = dfu_class_parse_request,
         .vendor_rqst_handler            = NULL,
