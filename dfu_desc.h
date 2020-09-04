@@ -69,7 +69,7 @@ typedef struct __packed {
  */
 mbed_error_t      dfu_get_descriptor(uint8_t             iface_id __attribute__((unused)),
                                      uint8_t            *buf,
-                                     uint32_t           *desc_size,
+                                     uint8_t           *desc_size,
                                      uint32_t            usbdci_handler __attribute__((unused)));
 #endif /* !_DFU_DESC_H */
 
