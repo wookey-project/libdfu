@@ -56,7 +56,7 @@ mbed_error_t      dfu_get_descriptor(uint8_t             iface_id __attribute__(
         (dfu_class_functional_descriptor_t *)(&buf[0]);
 
     /* let's configure fonctionnal desc */
-    desc->bLength = sizeof(dfu_class_functional_descriptor_t),
+    desc->bLength = sizeof(dfu_class_functional_descriptor_t);
     desc->bDescriptorType                       = USB_DESC_DFU_FUNC;
     desc->bmAttributes.reserved                 = 0;
     desc->bmAttributes.bitWillDetach            = 0;
