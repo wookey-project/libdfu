@@ -65,7 +65,7 @@ static void dfu_usb_driver_setup_read_status(void)
 #if USB_DFU_DEBUG
 	printf("==> READ dfu_usb_driver_setup_read_status\n");
 #endif
-    usb_backend_drv_ack(EP0, USB_EP_DIR_OUT);
+    usb_backend_drv_ack(EP0, USB_BACKEND_DRV_EP_DIR_OUT);
 	return;
 }
 
@@ -95,7 +95,7 @@ static void dfu_usb_driver_stall_out(){
 	printf("==> SEND dfu_usb_driver_stall_out\n");
 #endif
     /* XXX: replace 0 with ep->ep_id */
-    usb_backend_drv_stall(0, USB_EP_DIR_OUT);
+    usb_backend_drv_stall(0, USB_BACKEND_DRV_EP_DIR_OUT);
 	dfu_usb_write_in_progress = false;
 	return;
 }
