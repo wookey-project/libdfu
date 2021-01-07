@@ -25,6 +25,7 @@
 #include "libc/types.h"
 #include "libc/syscall.h"
 #include "libc/stdio.h"
+#include "libc/sync.h"
 #include "libc/nostd.h"
 #include "libc/string.h"
 #include "libc/queue.h"
@@ -1075,6 +1076,8 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                  */
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
+                // XXX pth:
+                request_data_membarrier();
                 break;
             }
         case DFUDNBUSY:
@@ -1123,6 +1126,8 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                  */
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
+                // XXX pth:
+                request_data_membarrier();
                 break;
             }
 
@@ -1137,6 +1142,8 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
+                // XXX pth:
+                request_data_membarrier();
                 break;
             }
         case DFUMANIFEST_SYNC:
@@ -1456,6 +1463,7 @@ if (errcode == MBED_ERROR_NOMEM) {
     }
     dfu_cmd_queue_empty = 0;
 
+    request_data_membarrier();
 err:
     return errcode;
 }
