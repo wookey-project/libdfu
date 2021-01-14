@@ -37,8 +37,6 @@
 
 #define USB_DFU_DEBUG 0
 
-extern uint32_t malloc_errno;
-
 /* FIXME: should be get back from USB driver */
 #define MAX_TIME_DETACH     4000
 
@@ -1499,7 +1497,7 @@ static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
     }
     if (*current_dfu_cmd != NULL) {
         if (wfree((void**)current_dfu_cmd)) {
-            printf("freeing current command failed with errno %d\n", malloc_errno);
+            printf("freeing current command failed\n");
             dfu_error(ERRUNKNOWN);
         }
     }
