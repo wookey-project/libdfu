@@ -25,6 +25,7 @@
 #include "libc/types.h"
 #include "libc/syscall.h"
 #include "libc/stdio.h"
+#include "libc/sync.h"
 #include "libc/nostd.h"
 #include "libc/string.h"
 #include "libc/queue.h"
@@ -36,8 +37,6 @@
 #include "libusbctrl.h"
 
 #define USB_DFU_DEBUG 0
-
-extern uint32_t malloc_errno;
 
 
 
@@ -67,7 +66,7 @@ static void dfu_usb_driver_setup_read_status(void)
 #if USB_DFU_DEBUG
 	printf("==> READ dfu_usb_driver_setup_read_status\n");
 #endif
-    usb_backend_drv_ack(EP0, USB_EP_DIR_OUT);
+    usb_backend_drv_ack(EP0, USB_BACKEND_DRV_EP_DIR_OUT);
 	return;
 }
 
@@ -97,7 +96,7 @@ static void dfu_usb_driver_stall_out(){
 	printf("==> SEND dfu_usb_driver_stall_out\n");
 #endif
     /* XXX: replace 0 with ep->ep_id */
-    usb_backend_drv_stall(0, USB_EP_DIR_OUT);
+    usb_backend_drv_stall(0, USB_BACKEND_DRV_EP_DIR_OUT);
 	dfu_usb_write_in_progress = false;
 	return;
 }
@@ -1077,6 +1076,8 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                  */
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
+                // XXX pth:
+                request_data_membarrier();
                 break;
             }
         case DFUDNBUSY:
@@ -1125,6 +1126,8 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                  */
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
+                // XXX pth:
+                request_data_membarrier();
                 break;
             }
 
@@ -1139,6 +1142,8 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
                 dfu_usb_driver_setup_read_status();
+                // XXX pth:
+                request_data_membarrier();
                 break;
             }
         case DFUMANIFEST_SYNC:
@@ -1458,6 +1463,7 @@ if (errcode == MBED_ERROR_NOMEM) {
     }
     dfu_cmd_queue_empty = 0;
 
+    request_data_membarrier();
 err:
     return errcode;
 }
@@ -1477,7 +1483,7 @@ static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
     }
     if (*current_dfu_cmd != NULL) {
         if (wfree((void**)current_dfu_cmd)) {
-            printf("freeing current command failed with errno %d\n", malloc_errno);
+            printf("freeing current command failed\n");
             dfu_error(ERRUNKNOWN);
         }
     }
