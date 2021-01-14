@@ -3,7 +3,7 @@
 #include "libc/types.h"
 #include "libc/string.h"
 //#include <string.h>
-#include "api/libusbctrl.h"
+#include "libusbctrl.h"
 #include "framac/entrypoint.h"
 
 /*
