@@ -4,6 +4,7 @@
 #include "libc/string.h"
 //#include <string.h>
 #include "libusbctrl.h"
+#include "dfu_priv.h"
 #include "framac/entrypoint.h"
 
 /*
@@ -117,29 +118,6 @@ uint32_t Frama_C_interval_32(uint32_t min, uint32_t max)
 
 uint8_t recv_buf[USB_BUF_SIZE];
 
-void usbhid_report_sent_trigger(uint8_t hid_handler,
-                                       uint8_t index) {
-    hid_handler = hid_handler;
-    index = index;
-    return;
-}
-
-mbed_error_t usbhid_request_trigger(uint8_t hid_handler,
-                                    uint8_t hid_req) {
-    hid_handler = hid_handler;
-    hid_req = hid_req;
-    /* FIXME: replace with interval on mbed_error_t */
-    return MBED_ERROR_NONE;
-}
-
-mbed_error_t usbhid_report_received_trigger(uint8_t hid_handler,
-                                            uint16_t size) {
-    hid_handler = hid_handler;
-    size = size;
-    /* FIXME: replace with interval on mbed_error_t */
-    return MBED_ERROR_NONE;
-}
-
 void test_fcn_dfu(){
 
 /*
@@ -171,16 +149,63 @@ void test_fcn_dfu(){
 
     usbctrl_start_device(ctxh1);
 
+    usbctrl_setup_pkt_t setup = { 0 };
 
+    uint8_t dfu_req_tab[] = {
+        USB_RQST_DFU_GET_STATUS,
+        USB_RQST_DFU_GET_STATE,
+        USB_RQST_DFU_DNLOAD,
+        USB_RQST_DFU_DNLOAD,
+        USB_RQST_DFU_DNLOAD,
+        USB_RQST_DFU_GET_STATE,
+        USB_RQST_DFU_DNLOAD,
+        //USB_RQST_DFU_UPLOAD,
+        USB_RQST_DFU_CLEAR_STATUS,
+        USB_RQST_DFU_ABORT,
+        USB_RQST_DFU_DETACH,
+    };
+    uint8_t dfu_req_tab_len = sizeof(dfu_req_tab)/sizeof(uint8_t);
 
-    dfu_exec_automaton();
+    for (uint8_t i = 0; i < dfu_req_tab_len; ++i) {
+
+        dfu_exec_automaton();
+
+        // 1. set buffer with content
+        // 2. call handler
+        setup.bRequest = dfu_req_tab[i];
+        if (dfu_req_tab[i] == USB_RQST_DFU_DNLOAD) {
+            /* specify that 4K is to be read from host in current URB */
+            setup.wValue = 8;
+            setup.wLength = USB_BUF_SIZE;
+        }
+        if (dfu_req_tab[i] == USB_RQST_DFU_UPLOAD) {
+            /* specify that 4K is to be send to the host in current URB */
+            setup.wValue = 8;
+            setup.wLength = USB_BUF_SIZE;
+        }
+        //  DFU command recv on EP0
+        dfu_class_parse_request(0, &setup);
+        // exec DFU command
+        dfu_exec_automaton();
+        if (dfu_req_tab[i] == USB_RQST_DFU_DNLOAD) {
+            // now that EP0 is ready to recv data, emulate data received trigger
+            // data to be read from host, consider data received
+            dfu_data_out_handler(0,0,0);
+            // handle backend store execution
+            dfu_exec_automaton();
+            // ... emulate backend acknowledge
+            dfu_store_finished();
+        }
+        if (dfu_req_tab[i] == USB_RQST_DFU_UPLOAD) {
+            // emulate backend has finished to store data to DFU buffer
+            dfu_load_finished(USB_BUF_SIZE);
+            // now that EP0 is ready to send data, emulate data sent trigger
+            dfu_data_in_handler(0,0,0);
+        }
+        // set load event as finished
+    }
 
     dfu_reinit();
-
-    dfu_load_finished(USB_BUF_SIZE);
-
-    dfu_store_finished();
-
 
     dfu_leave_session_with_error(ERRFILE);
 

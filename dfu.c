@@ -1388,7 +1388,10 @@ static volatile unsigned int dfu_cmd_queue_empty = 1;
  * requests and handle the DFU automaton. This ISR function
  * is keeped simple and without any external I/O
  *****************************************************/
-static mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unused)),
+#ifndef __FRAMAC__
+static
+#endif
+mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unused)),
                                             usbctrl_setup_pkt_t *setup_packet)
 {
     uint8_t ret;
@@ -1623,7 +1626,10 @@ err:
  * configured during the dfu_request_dnload() in the USB stack has been
  * received in the USB device FIFO and copied in the task's buffer.
  */
-static mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
+#ifndef __FRAMAC__
+static
+#endif
+mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
                                          uint32_t size __attribute__((unused)),
                                          uint8_t ep_id __attribute__((unused)))
 {
@@ -1651,7 +1657,10 @@ static mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused))
  * Data in handler, called by the USB stack when the task's fifo has been
  * fully read by the USB device in its own FIFO and sent to the host.
  */
-static mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
+#ifndef __FRAMAC__
+static
+#endif
+mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
                                         uint32_t size __attribute__((unused)),
                                         uint8_t ep_id __attribute__((unused)))
 {

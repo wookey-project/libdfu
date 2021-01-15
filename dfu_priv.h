@@ -83,5 +83,26 @@ typedef struct __packed {
 } device_dfu_status_t;
 
 
+#ifdef __FRAMAC__
+/*
+ * export internal dfu functions to emulate asynchronous triggers from framaC entrypoint
+ */
+mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unused)),
+                                            usbctrl_setup_pkt_t *setup_packet);
+
+
+mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
+                                         uint32_t size __attribute__((unused)),
+                                         uint8_t ep_id __attribute__((unused)));
+
+mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
+                                        uint32_t size __attribute__((unused)),
+                                        uint8_t ep_id __attribute__((unused)));
+
+
+void dfu_store_finished(void);
+
+void dfu_load_finished(uint16_t bytes_read);
+#endif
 
 #endif/*USB_DFU_PRIV_H_*/
