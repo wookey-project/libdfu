@@ -231,6 +231,15 @@ void test_fcn_dfu_fuzz(){
 
     dfu_class_parse_request(0, &setup);
     dfu_exec_automaton();
+
+    if (setup.bRequest == USB_RQST_DFU_DNLOAD) {
+        dfu_store_finished();
+        dfu_exec_automaton();
+    }
+    if (setup.bRequest == USB_RQST_DFU_UPLOAD) {
+        dfu_load_finished(USB_BUF_SIZE);
+        dfu_exec_automaton();
+    }
 }
 
 void test_fcn_dfu_erreur(){
