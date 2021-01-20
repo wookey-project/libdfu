@@ -156,13 +156,17 @@ void test_fcn_dfu(){
         USB_RQST_DFU_GET_STATE,
         USB_RQST_DFU_DNLOAD,
         USB_RQST_DFU_DNLOAD,
+        USB_RQST_DFU_GET_STATUS,
         USB_RQST_DFU_DNLOAD,
         USB_RQST_DFU_GET_STATE,
         USB_RQST_DFU_DNLOAD,
+        USB_RQST_DFU_GET_STATUS,
         //USB_RQST_DFU_UPLOAD,
         USB_RQST_DFU_CLEAR_STATUS,
         USB_RQST_DFU_ABORT,
+        USB_RQST_DFU_GET_STATUS,
         USB_RQST_DFU_DETACH,
+        USB_RQST_DFU_GET_STATUS,
     };
     uint8_t dfu_req_tab_len = sizeof(dfu_req_tab)/sizeof(uint8_t);
 
@@ -218,6 +222,17 @@ void test_fcn_dfu(){
 
 */
 
+void test_fcn_dfu_fuzz(){
+
+    usbctrl_setup_pkt_t setup = { 0 };
+    setup.bRequest =  Frama_C_interval_8(USB_RQST_DFU_DETACH,0x10); /* request including invalid requests */
+    setup.wValue =  Frama_C_interval_16(0,65535); /* request including invalid requests */
+    setup.wLength =  Frama_C_interval_16(0,65535); /* request including invalid requests */
+
+    dfu_class_parse_request(0, &setup);
+    dfu_exec_automaton();
+}
+
 void test_fcn_dfu_erreur(){
 }
 
@@ -228,6 +243,8 @@ void main(void)
 {
 
     test_fcn_dfu() ;
+    dfu_reinit();
+    test_fcn_dfu_fuzz();
     test_fcn_dfu_erreur() ;
     test_fcn_driver_eva() ;
 
