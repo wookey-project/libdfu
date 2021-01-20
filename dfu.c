@@ -395,14 +395,14 @@ static inline void dfu_set_state(const uint8_t new_state)
     dfu_context_t * dfu_ctx = dfu_get_context();
     if (new_state == 0xff) {
         /* should never happen ! fault protection code */
-        log_printf("PANIC! this should never arrise !");
-        dfu_set_state(DFUERROR);
+        log_printf("PANIC! this should never happen. goto DFUERROR !");
+        dfu_ctx->state = DFUERROR;
         goto err;
     }
     log_printf("state: %x => %x\n", dfu_ctx->state, new_state);
     dfu_ctx->state = new_state;
-    request_data_membarrier();
 err:
+    request_data_membarrier();
     return;
 }
 
