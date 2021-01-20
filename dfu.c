@@ -53,16 +53,23 @@ static uint8_t read_firmware_data_cmd = 0;
  * As the USB stack can't hold data while its previous job is not finished, we manage
  * the serialisation here
  */
-static volatile bool dfu_usb_read_in_progress = false;
-static volatile bool dfu_usb_write_in_progress = false;
+static bool dfu_usb_read_in_progress = false;
+static bool dfu_usb_write_in_progress = false;
+
+static inline void dfu_usb_driver_setup_send_zlp(void){
+    usb_backend_drv_send_zlp(0);
+	set_bool_with_membarrier(&dfu_usb_write_in_progress, false);
+}
+
 
 static void dfu_usb_driver_setup_read_status(void)
 {
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+        request_data_membarrier();
 		continue;
 	}
     // XXX: PTH: not for status read (i.e. clear NAK only)
-	dfu_usb_read_in_progress = true;
+	set_bool_with_membarrier(&dfu_usb_read_in_progress, true);
 #if USB_DFU_DEBUG
 	printf("==> READ dfu_usb_driver_setup_read_status\n");
 #endif
@@ -73,9 +80,10 @@ static void dfu_usb_driver_setup_read_status(void)
 static volatile uint32_t read_cnt = 0;
 void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+        request_data_membarrier();
 		continue;
 	}
-	dfu_usb_read_in_progress = true;
+	set_bool_with_membarrier(&dfu_usb_read_in_progress, true);
 #if USB_DFU_DEBUG
 	printf("==> READ %d dfu_usb_driver_setup_read %d\n", read_cnt, size);
 #endif
@@ -89,38 +97,40 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 
 static void dfu_usb_driver_stall_out(){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+        request_data_membarrier();
 		continue;
 	}
-	dfu_usb_write_in_progress = true;
+	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
 #if USB_DFU_DEBUG
 	printf("==> SEND dfu_usb_driver_stall_out\n");
 #endif
     /* XXX: replace 0 with ep->ep_id */
     usb_backend_drv_stall(0, USB_BACKEND_DRV_EP_DIR_OUT);
-	dfu_usb_write_in_progress = false;
+	set_bool_with_membarrier(&dfu_usb_write_in_progress, false);
 	return;
 }
 
 static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 {
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+        request_data_membarrier();
 		continue;
 	}
-	dfu_usb_write_in_progress = true;
+	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
 #if USB_DFU_DEBUG
 	printf("==> SEND dfu_usb_driver_setup_send_status %d\n", status);
 #endif
     /* XXX: change 0 with ep->ep_dir */
     dfu_usb_driver_setup_send_zlp();
-    dfu_usb_write_in_progress = false;
 	return;
 }
 
 void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+        request_data_membarrier();
 		continue;
 	}
-	dfu_usb_write_in_progress = true;
+	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
 #if USB_DFU_DEBUG
 	printf("==> SEND dfu_usb_driver_setup_send %d\n", size);
 #endif
@@ -130,10 +140,6 @@ void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 	return;
 }
 
-void dfu_usb_driver_setup_send_zlp(void){
-    usb_backend_drv_send_zlp(0);
-	dfu_usb_write_in_progress = false;
-}
 
 
 
@@ -1419,7 +1425,7 @@ mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unus
      * separated. As a consequence, lock or critical sections is not required
      * for accessing this variable
      */
-    dfu_usb_read_in_progress = false;
+    set_bool_with_membarrier(&dfu_usb_read_in_progress, false);
 
     /*
      * Request unknown (not DFU standard)
@@ -1649,7 +1655,7 @@ mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
      * lowered and the block_in_pogress field of the dfu context is set to 0.
      */
      ready_for_data_receive = true;
-     dfu_usb_read_in_progress = false;
+     set_bool_with_membarrier(&dfu_usb_read_in_progress, false);
      dfu_ctx->data_to_store = true;
      return errcode;
 }
@@ -1671,7 +1677,7 @@ mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
     printf("[ISR] end of USB write\n");
 #endif
     /* USB IP write access is now finished */
-    dfu_usb_write_in_progress = false;
+    set_bool_with_membarrier(&dfu_usb_write_in_progress, false);
 
     if (dfu_get_state() == DFUUPLOAD_IDLE) {
         /* The write action on the USB output fifo is finished
