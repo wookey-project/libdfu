@@ -26,6 +26,7 @@
 #include "api/dfu.h"
 #include "libc/string.h"
 #include "libc/types.h"
+#include "libc/sync.h"
 #include "dfu_priv.h"
 #include "libusbctrl.h"
 #include "dfu_priv.h"
@@ -38,15 +39,18 @@
  * As most micro-controlers are not multicore based, this should not be
  * a problem.
  */
-static volatile dfu_context_t dfu_context = {0};
+#ifndef __FRAMAC__
+static dfu_context_t dfu_context = {0};
+#endif
 
-static volatile dfu_context_t * const dfu_ctx = &dfu_context;
+static dfu_context_t * const dfu_ctx = &dfu_context;
+
 
 /*@
   @ assigns \nothing;
   @ ensures \result == &dfu_context;
  */
-volatile dfu_context_t * dfu_get_context(void)
+dfu_context_t * dfu_get_context(void)
 {
     return dfu_ctx;
 }
@@ -56,7 +60,7 @@ volatile dfu_context_t * dfu_get_context(void)
   @ requires \separated(ctx, ctx->data_out_buffer + (0 .. ctx->data_out_length-1));
   @ assigns *ctx;
  */
-void dfu_init_context(volatile dfu_context_t *ctx)
+void dfu_init_context(dfu_context_t *ctx)
 {
     uint16_t transfert_size = ctx->transfert_size != 0 ? ctx->transfert_size : 0;
     uint8_t  **buffer = ctx->data_out_buffer != NULL ? ctx->data_out_buffer : 0;
@@ -98,6 +102,7 @@ void dfu_init_context(volatile dfu_context_t *ctx)
 #endif
 
     memset((void*)&ctx->iface, 0x0, sizeof(usbctrl_interface_t));
+    request_data_membarrier();
 }
 
 

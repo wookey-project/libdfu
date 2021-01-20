@@ -9,6 +9,11 @@ if USR_LIB_DFU
 
 menu "DFU-Related Features"
 
+config USB_LIB_DFU_DEBUG
+  bool "Enable DFU stack debugging"
+  default n
+
+
 config USR_LIB_DFU_CAN_UPLOAD
   bool "Support for DFU Upload mode"
   default n

@@ -64,8 +64,12 @@ typedef struct  {
     usbctrl_interface_t   iface;
 } dfu_context_t;
 
-void dfu_init_context(volatile dfu_context_t *ctx);
+void dfu_init_context(dfu_context_t *ctx);
 
-volatile dfu_context_t * dfu_get_context(void);
+dfu_context_t * dfu_get_context(void);
+
+#ifdef __FRAMAC__
+dfu_context_t dfu_context = {0};
+#endif
 
 #endif /*!DFU_CONTEXT_H_*/

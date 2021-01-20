@@ -28,7 +28,11 @@
 
 #define MAX_TIME_DETACH     4000
 
-
+#if CONFIG_USR_LIB_DFU_DEBUG
+# define log_printf(...) printf(__VA_ARGS__)
+#else
+# define log_printf(...)
+#endif
 
 
 typedef struct __packed {
