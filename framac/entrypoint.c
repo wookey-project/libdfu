@@ -226,6 +226,8 @@ void test_fcn_dfu_fuzz(){
 
     usbctrl_setup_pkt_t setup = { 0 };
     setup.bRequest =  Frama_C_interval_8(USB_RQST_DFU_DETACH,0x10); /* request including invalid requests */
+    /* Beware: the below code make EVA execution clearly longer. Although, it permits to check the overall$
+     * input values (that can be forged by the host) possibilities */
     setup.wValue =  Frama_C_interval_16(0,65535); /* request including invalid requests */
     setup.wLength =  Frama_C_interval_16(0,65535); /* request including invalid requests */
 
