@@ -62,7 +62,7 @@ static void dfu_usb_driver_setup_read_status(void)
 		continue;
 	}
     // XXX: PTH: not for status read (i.e. clear NAK only)
-	//dfu_usb_read_in_progress = true;
+	dfu_usb_read_in_progress = true;
 #if USB_DFU_DEBUG
 	printf("==> READ dfu_usb_driver_setup_read_status\n");
 #endif
@@ -111,7 +111,7 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 	printf("==> SEND dfu_usb_driver_setup_send_status %d\n", status);
 #endif
     /* XXX: change 0 with ep->ep_dir */
-    usb_backend_drv_send_zlp(0);
+    dfu_usb_driver_setup_send_zlp();
     dfu_usb_write_in_progress = false;
 	return;
 }
@@ -131,7 +131,7 @@ void dfu_usb_driver_setup_send(const void *src, uint32_t size){
 }
 
 void dfu_usb_driver_setup_send_zlp(void){
-    dfu_usb_driver_setup_send(0,0);
+    usb_backend_drv_send_zlp(0);
 	dfu_usb_write_in_progress = false;
 }
 
@@ -1396,7 +1396,7 @@ mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unus
 {
     uint8_t ret;
     mbed_error_t errcode = MBED_ERROR_NONE;
-    uint64_t ms;
+    uint64_t ms = 1;
 
     /* Sanity check */
     if(setup_packet == NULL){
@@ -1441,12 +1441,13 @@ mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unus
     printf("[handler mode] ENQUEUINQ => state %s, req %s\n", print_state_name(dfu_get_state()), print_request_name(setup_packet->bRequest));
 #endif
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
-    if(ret) {
+    if (ret != 0) {
         printf("Error while allocating queue !!!\n");
         errcode = MBED_ERROR_NOMEM;
         dfu_error(ERRUNKNOWN);
         goto err;
     }
+    /*@ assert \valid(cur_req); */
 
 #if USB_DFU_DEBUG
     printf("req: %s\n", print_request_name(setup_packet->bRequest));
