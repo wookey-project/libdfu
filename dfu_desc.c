@@ -33,6 +33,29 @@
  * This functions respects the libusbctrl class level descriptor getter API,
  * as defined in libusbctrl.h.
  */
+/*@
+  @ requires \separated(buf+(0..*desc_size-1),desc_size);
+  @ assigns *desc_size;
+  @ assigns buf[0 .. sizeof(dfu_class_functional_descriptor_t)-1];
+
+  @ behavior invparam:
+  @   assumes (buf == NULL || desc_size == NULL);
+  @   ensures \result == MBED_ERROR_INVPARAM;
+
+  @ behavior nomem:
+  @   assumes (buf != NULL && desc_size != NULL);
+  @   assumes *desc_size < sizeof(dfu_class_functional_descriptor_t);
+  @   ensures \result == MBED_ERROR_NOMEM;
+
+  @ behavior ok:
+  @   assumes (buf != NULL && desc_size != NULL);
+  @   assumes *desc_size >= sizeof(dfu_class_functional_descriptor_t);
+  @   ensures \result == MBED_ERROR_NONE;
+
+  @ complete behaviors;
+  @ disjoint behaviors;
+
+  */
 mbed_error_t      dfu_get_descriptor(uint8_t             iface_id __attribute__((unused)),
                                      uint8_t            *buf,
                                      uint8_t           *desc_size,

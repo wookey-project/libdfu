@@ -5,6 +5,7 @@
 //#include <string.h>
 #include "libusbctrl.h"
 #include "dfu_priv.h"
+#include "dfu_desc.h"
 #include "framac/entrypoint.h"
 
 /*
@@ -248,6 +249,15 @@ void test_fcn_dfu_erreur(){
 }
 
 void test_fcn_driver_eva(){
+    uint8_t buf[256];
+    uint8_t size = 255;
+
+    /* DFU function contract (return value and so on) is handled by WP, not EVA) */
+    /* returns DFU descriptor */
+    dfu_get_descriptor(0, &buf[0], &size, 0);
+    size = 2;
+    /* not enough space to return DFU descriptor */
+    dfu_get_descriptor(0, &buf[0], &size, 0);
 }
 
 void main(void)
