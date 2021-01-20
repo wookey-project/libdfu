@@ -179,6 +179,11 @@ FRAMAC_EVA_FLAGS:=\
 		    -eva-use-spec usbctrl_initialize \
 		    -eva-use-spec usbctrl_declare_interface \
 		    -eva-use-spec usbctrl_start_device \
+		    -eva-use-spec wmalloc \
+		    -eva-use-spec queue_create \
+		    -eva-use-spec queue_is_empty \
+		    -eva-use-spec queue_enqueue \
+		    -eva-use-spec queue_dequeue \
 		    -eva-log a:frama-c-rte-eva.log
 
 FRAMAC_WP_FLAGS:=\
