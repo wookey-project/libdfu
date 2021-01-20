@@ -66,6 +66,16 @@ static void dfu_usb_driver_setup_read_status(void)
 {
 	while ((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)) {
         request_data_membarrier();
+
+#ifdef __FRAMAC__
+        /* emulate asyncrhonous events */
+        if (dfu_usb_read_in_progress == true) {
+            dfu_data_out_handler(0,0,0);
+        }
+        if (dfu_usb_write_in_progress == true) {
+            dfu_data_in_handler(0,0,0);
+        }
+#endif
 		continue;
 	}
     // XXX: PTH: not for status read (i.e. clear NAK only)
@@ -80,12 +90,21 @@ static uint32_t read_cnt = 0;
 #endif
 
 /*@
-  @ requires \separated(&dfu_usb_read_in_progress, &GHOST_opaque_drv_privates);
+  @ requires \separated((uint8_t*)dst+(0 .. size-1), &dfu_usb_read_in_progress, &GHOST_opaque_drv_privates);
   @ assigns dfu_usb_read_in_progress, GHOST_opaque_drv_privates;
   */
 void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
         request_data_membarrier();
+#ifdef __FRAMAC__
+        /* emulate asyncrhonous events */
+        if (dfu_usb_read_in_progress == true) {
+            dfu_data_out_handler(0,0,0);
+        }
+        if (dfu_usb_write_in_progress == true) {
+            dfu_data_in_handler(0,0,0);
+        }
+#endif
 		continue;
 	}
 	set_bool_with_membarrier(&dfu_usb_read_in_progress, true);
@@ -106,6 +125,15 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 static void dfu_usb_driver_stall_out(void) {
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
         request_data_membarrier();
+#ifdef __FRAMAC__
+        /* emulate asyncrhonous events */
+        if (dfu_usb_read_in_progress == true) {
+            dfu_data_out_handler(0,0,0);
+        }
+        if (dfu_usb_write_in_progress == true) {
+            dfu_data_in_handler(0,0,0);
+        }
+#endif
 		continue;
 	}
 	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
@@ -124,6 +152,15 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 {
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)) {
         request_data_membarrier();
+#ifdef __FRAMAC__
+        /* emulate asyncrhonous events */
+        if (dfu_usb_read_in_progress == true) {
+            dfu_data_out_handler(0,0,0);
+        }
+        if (dfu_usb_write_in_progress == true) {
+            dfu_data_in_handler(0,0,0);
+        }
+#endif
 		continue;
 	}
 	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
@@ -140,6 +177,15 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 void dfu_usb_driver_setup_send(const void *src, uint32_t size) {
 	while ((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)) {
         request_data_membarrier();
+#ifdef __FRAMAC__
+        /* emulate asyncrhonous events */
+        if (dfu_usb_read_in_progress == true) {
+            dfu_data_out_handler(0,0,0);
+        }
+        if (dfu_usb_write_in_progress == true) {
+            dfu_data_in_handler(0,0,0);
+        }
+#endif
 		continue;
 	}
 	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
