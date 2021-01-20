@@ -42,24 +42,35 @@ static volatile dfu_context_t dfu_context = {0};
 
 static volatile dfu_context_t * const dfu_ctx = &dfu_context;
 
+/*@
+  @ assigns \nothing;
+  @ ensures \result == &dfu_context;
+ */
 volatile dfu_context_t * dfu_get_context(void)
 {
     return dfu_ctx;
 }
 
+/*@
+  @ requires \valid(ctx);
+  @ requires \separated(ctx, ctx->data_out_buffer + (0 .. ctx->data_out_length-1));
+  @ assigns *ctx;
+ */
 void dfu_init_context(volatile dfu_context_t *ctx)
 {
-    uint16_t transfert_size = ctx->transfert_size ? ctx->transfert_size : 0;
-    uint8_t  **buffer = ctx->data_out_buffer ? ctx->data_out_buffer : 0;
+    uint16_t transfert_size = ctx->transfert_size != 0 ? ctx->transfert_size : 0;
+    uint8_t  **buffer = ctx->data_out_buffer != NULL ? ctx->data_out_buffer : 0;
+    uint32_t  buffer_len = ctx->data_out_length != 0 ? ctx->data_out_length : 0;
 
+    /*@ assert buffer != NULL ==> \valid(buffer+(0..buffer_len-1)); */
     ctx->block_in_progress = 0;
     ctx->session_in_progress = 0;
     ctx->status = OK;
     ctx->state = DFUIDLE;
-    ctx->data_out_buffer = (uint8_t**)buffer;
+    ctx->data_out_buffer = buffer;
     ctx->data_out_current_block_nb = 0;
     ctx->data_out_nb_blocks = 0;
-    ctx->data_out_length = 0;
+    ctx->data_out_length = buffer_len;
     ctx->data_in_buffer = (uint8_t**)buffer;
     ctx->data_in_nb_blocks = 0;
     ctx->data_in_current_block_nb = 0;
@@ -85,7 +96,6 @@ void dfu_init_context(volatile dfu_context_t *ctx)
 #else
     ctx->can_upload = false;
 #endif
-
 
     memset((void*)&ctx->iface, 0x0, sizeof(usbctrl_interface_t));
 }
