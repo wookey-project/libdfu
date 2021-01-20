@@ -395,14 +395,15 @@ static inline void dfu_set_state(const uint8_t new_state)
     dfu_context_t * dfu_ctx = dfu_get_context();
     if (new_state == 0xff) {
         /* should never happen ! fault protection code */
-        /*@ assert \false; */
         log_printf("PANIC! this should never arrise !");
-        while (1) {};
-        return;
+        dfu_set_state(DFUERROR);
+        goto err;
     }
     log_printf("state: %x => %x\n", dfu_ctx->state, new_state);
     dfu_ctx->state = new_state;
     request_data_membarrier();
+err:
+    return;
 }
 
 
@@ -473,7 +474,7 @@ static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
 /*@
   @ requires APPIDLE <= current_state <= DFUERROR;
   @ requires USB_RQST_DFU_DETACH <= request <= USB_RQST_DFU_ABORT;
-  @ requires \separated(dfu_automaton + (0 .. DFUERROR-1),&dfu_context);
+  @ requires \separated(dfu_automaton + (0 .. DFUERROR),&dfu_context);
   @ assigns dfu_context.state;
   // TODO: specify function contract
  */
