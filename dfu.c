@@ -79,7 +79,7 @@ static void dfu_usb_driver_setup_read_status(void)
 		continue;
 	}
     // XXX: PTH: not for status read (i.e. clear NAK only)
-	set_bool_with_membarrier(&dfu_usb_read_in_progress, true);
+	// set_bool_with_membarrier(&dfu_usb_read_in_progress, true);
 	log_printf("==> READ dfu_usb_driver_setup_read_status\n");
     usb_backend_drv_ack(EP0, USB_BACKEND_DRV_EP_DIR_OUT);
 	return;
@@ -150,6 +150,7 @@ static void dfu_usb_driver_stall_out(void) {
   */
 static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 {
+#if 0
 	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)) {
         request_data_membarrier();
 #ifdef __FRAMAC__
@@ -165,6 +166,7 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 	}
 	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
 	log_printf("==> SEND dfu_usb_driver_setup_send_status %d\n", status);
+#endif
     /* XXX: change 0 with ep->ep_dir */
     dfu_usb_driver_setup_send_zlp();
 	return;
@@ -885,11 +887,13 @@ invalid_transition:
 }
 
 
+static uint32_t dnload_cnt = 0;
 /*
  * Handle DFU_DNLOAD event
  */
 mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
 {
+    dnload_cnt++;
     log_printf("%s\n", __func__);
     dfu_context_t * dfu_ctx = dfu_get_context();
     /* Sanity check */
@@ -923,7 +927,6 @@ mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
                     dfu_ctx->data_out_length = setup_packet->wLength;
                     dfu_set_state(DFUDNLOAD_SYNC); /* We have data to dl */
                     dfu_ctx->block_in_progress = 1;
-                    dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     dfu_ctx->session_in_progress = 1;
                     log_printf("read %dB\n", dfu_ctx->block_size);
@@ -931,7 +934,10 @@ mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
 #if CONFIG_USR_LIB_DFU_DEBUG
                     memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
 #endif
+                    /* prepare recv FIFO */
                     dfu_usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size);
+                    /* and acknowledge host */
+                    dfu_usb_driver_setup_send_status(0);
                 }
                 /* This is a new download session (i.e. new file) */
                 break;
@@ -957,7 +963,6 @@ mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
                     dfu_ctx->data_out_length = setup_packet->wLength;
                     dfu_set_state(DFUDNLOAD_SYNC); /* We have data to dl */
                     dfu_ctx->block_in_progress = 1;
-                    dfu_usb_driver_setup_send_status(0);
                     dfu_ctx->block_size = setup_packet->wLength;
                     set_bool_with_membarrier(&ready_for_data_receive, false);
 #if CONFIG_USR_LIB_DFU_DEBUG
@@ -965,6 +970,7 @@ mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
                     memset(dfu_ctx->data_out_buffer, 0, dfu_ctx->transfert_size);
 #endif
                     dfu_usb_driver_setup_read(dfu_ctx->data_out_buffer, dfu_ctx->block_size);
+                    dfu_usb_driver_setup_send_status(0);
                 }
                 break;
             }
@@ -1534,6 +1540,7 @@ mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unus
      * separated. As a consequence, lock or critical sections is not required
      * for accessing this variable
      */
+    /* XXX: PTH: really ? even for dnload GetStatus ? they happen during DNLOAD requests not yet written */
     set_bool_with_membarrier(&dfu_usb_read_in_progress, false);
 
     /*
@@ -1550,7 +1557,7 @@ mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unus
      * in order to be executed in main thread mode. The ISR only handle
      * requests enquing
      */
-    log_printf("[handler mode] ENQUEUINQ => state %s, req %s\n", print_state_name(dfu_get_state()), print_request_name(setup_packet->bRequest));
+    log_printf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
     if (ret != 0) {
         log_printf("Error while allocating queue !!!\n");
@@ -1635,7 +1642,7 @@ static mbed_error_t dfu_class_execute_request(void)
     if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
         log_printf("Unable to dequeue command!\n");
         leave_critical_section();
-	return MBED_ERROR_NOSTORAGE;
+        return MBED_ERROR_NOSTORAGE;
     }
     current_dfu_cmd = *current_dfu_cmd_p;
     dfu_release_current_dfu_cmd(&current_dfu_cmd_p);
@@ -1644,9 +1651,9 @@ static mbed_error_t dfu_class_execute_request(void)
     }
     leave_critical_section();
 #if CONFIG_USR_LIB_DFU_DEBUG
-    log_printf("[main thread] DEQUEUING, state is: ");
-    dfu_state_enum_t old_state, new_state;
+    dfu_state_enum_t old_state;
     old_state = dfu_get_state();
+    log_printf("[main thread] DEQUEUING, state is: %d\n", old_state);
 #endif
     switch (current_dfu_cmd.setup_packet.bRequest) {
 	/* Note: (void*) cast to silence clang [-Werror,-Waddress-of-packed-member]
@@ -1726,8 +1733,8 @@ err:
 static
 #endif
 mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
-                                         uint32_t size __attribute__((unused)),
-                                         uint8_t ep_id __attribute__((unused)))
+                                  uint32_t size __attribute__((unused)),
+                                  uint8_t ep_id __attribute__((unused)))
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
     dfu_context_t * dfu_ctx = dfu_get_context();
