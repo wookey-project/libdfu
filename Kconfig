@@ -1,13 +1,18 @@
 config USR_LIB_DFU
   bool  "userspace USB DFU protocol stack"
   default y
-  select USR_DRV_USB
+  select USR_LIB_USBCTRL
   ---help---
   Support for Device Firmware Update protocol stack.
 
 if USR_LIB_DFU
 
 menu "DFU-Related Features"
+
+config USB_LIB_DFU_DEBUG
+  bool "Enable DFU stack debugging"
+  default n
+
 
 config USR_LIB_DFU_CAN_UPLOAD
   bool "Support for DFU Upload mode"

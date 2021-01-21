@@ -26,20 +26,13 @@
 
 #include "api/dfu.h"
 
-typedef struct __packed dfu_functional_descriptor {
-	uint8_t bLength;
-	uint8_t bDescriptorType;
-	struct {
-		uint8_t bitCanDnload:1;
-		uint8_t bitCanUpload:1;
-		uint8_t bitManifestationTolerant:1;
-		uint8_t bitWillDetach:1;
-		uint8_t reserved:4;
-	} bmAttributes;
-	uint16_t wDetachTimeOut;
-	uint16_t wTransferSize;
-	uint16_t bcdDFUVersion;
-} dfu_functional_descriptor_t;
+#define MAX_TIME_DETACH     4000
+
+#if CONFIG_USR_LIB_DFU_DEBUG
+# define log_printf(...) printf(__VA_ARGS__)
+#else
+# define log_printf(...)
+#endif
 
 
 typedef struct __packed {
@@ -93,39 +86,27 @@ typedef struct __packed {
     uint8_t iString;
 } device_dfu_status_t;
 
-/*
- * DFU context
- * TODO: fields should be ordered more cleanly, depending on their:
- * 1) usage
- * 2) size per usage
- * for a better readability
- */
-typedef struct  {
-    uint8_t               block_in_progress;
-    uint8_t               session_in_progress;
-    dfu_state_enum_t      state;
-    dfu_status_enum_t     status;
-    uint16_t              data_out_nb_blocks;
-    uint32_t              data_out_length;
-    uint16_t              data_in_nb_blocks;
-    uint32_t              data_in_length;
-    uint32_t              flash_address;
-    uint16_t              detach_timeout_ms;
-    uint64_t              detach_timeout_start;
-    uint16_t              poll_timeout_ms;
-    uint64_t              poll_start;
-    uint16_t              block_size;
-    uint16_t              transfert_size;
-    uint32_t              firmware_size;
-    uint8_t **            data_out_buffer;
-    uint8_t **            data_in_buffer;
-    uint16_t              data_out_current_block_nb;
-    uint16_t              data_in_current_block_nb;
-    uint32_t              current_block_offset;
-    bool                  data_to_store;
-    bool                  data_to_load;
-} dfu_context_t;
 
-void dfu_init_context(void);
+#ifdef __FRAMAC__
+/*
+ * export internal dfu functions to emulate asynchronous triggers from framaC entrypoint
+ */
+mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unused)),
+                                            usbctrl_setup_pkt_t *setup_packet);
+
+
+mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
+                                         uint32_t size __attribute__((unused)),
+                                         uint8_t ep_id __attribute__((unused)));
+
+mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
+                                        uint32_t size __attribute__((unused)),
+                                        uint8_t ep_id __attribute__((unused)));
+
+
+void dfu_store_finished(void);
+
+void dfu_load_finished(uint16_t bytes_read);
+#endif
 
 #endif/*USB_DFU_PRIV_H_*/
