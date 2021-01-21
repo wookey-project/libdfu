@@ -34,7 +34,7 @@
  * as defined in libusbctrl.h.
  */
 /*@
-  @ requires \separated(buf+(0..*desc_size-1),desc_size);
+  @ requires \separated(&dfu_context, buf+(0..*desc_size-1),desc_size);
   @ assigns *desc_size;
   @ assigns buf[0 .. sizeof(dfu_class_functional_descriptor_t)-1];
 
@@ -58,11 +58,11 @@
   */
 mbed_error_t      dfu_get_descriptor(uint8_t             iface_id __attribute__((unused)),
                                      uint8_t            *buf,
-                                     uint8_t           *desc_size,
+                                     uint8_t            *desc_size,
                                      uint32_t            usbdci_handler __attribute__((unused)))
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
-    volatile dfu_context_t *dfuctx = dfu_get_context();
+    dfu_context_t *dfuctx = dfu_get_context();
 
     /* DFU CLASS does not support multiple DFU interfaces in the same time,
      * iface_id is ignored */
