@@ -1145,7 +1145,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 status.iString = dfu_get_status_string_id();
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 break;
             }
         case APPDETACH:
@@ -1156,7 +1156,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 status.iString = dfu_get_status_string_id();
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUIDLE:
@@ -1170,7 +1170,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 status.iString = dfu_get_status_string_id();
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUDNLOAD_SYNC:
@@ -1193,7 +1193,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                  * reconfiguring the USB device
                  */
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 // XXX pth:
                 request_data_membarrier();
                 break;
@@ -1261,7 +1261,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 status.iString = dfu_get_status_string_id();
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUMANIFEST_SYNC:
@@ -1283,7 +1283,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 status.iString = dfu_get_status_string_id();
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 /* inform the upper layer that the download is complete */
                 dfu_backend_eof();
                 break;
@@ -1299,7 +1299,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 status.iString = dfu_get_status_string_id();
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 break;
             }
         case DFUERROR:
@@ -1313,7 +1313,7 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 status.iString = dfu_get_status_string_id();
 
                 dfu_usb_driver_setup_send((void*)&status, sizeof(status));
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 break;
             }
         default:
@@ -1396,7 +1396,7 @@ mbed_error_t dfu_request_getstate(usbctrl_setup_pkt_t *setup_packet)
                 uint8_t state = dfu_get_state();
 
                 dfu_usb_driver_setup_send((void*)&state, 1);
-                dfu_usb_driver_setup_read_status();
+                //dfu_usb_driver_setup_read_status();
                 break;
             }
         default:
@@ -1557,7 +1557,7 @@ mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unus
      * in order to be executed in main thread mode. The ISR only handle
      * requests enquing
      */
-    log_printf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
+    printf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
     if (ret != 0) {
         log_printf("Error while allocating queue !!!\n");
@@ -1650,10 +1650,10 @@ static mbed_error_t dfu_class_execute_request(void)
         set_bool_with_membarrier(&dfu_cmd_queue_empty, true);
     }
     leave_critical_section();
-#if CONFIG_USR_LIB_DFU_DEBUG
+#if 1 // PTH CONFIG_USR_LIB_DFU_DEBUG
     dfu_state_enum_t old_state;
     old_state = dfu_get_state();
-    log_printf("[main thread] DEQUEUING, state is: %d\n", old_state);
+    printf("[main thread] DEQUEUING, state is: %d\n", old_state);
 #endif
     switch (current_dfu_cmd.setup_packet.bRequest) {
 	/* Note: (void*) cast to silence clang [-Werror,-Waddress-of-packed-member]
