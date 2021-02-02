@@ -54,10 +54,9 @@ dfu_context_t * dfu_get_context(void)
 {
     return dfu_ctx;
 }
-
+//   @ requires \separated(ctx, ctx->data_out_buffer + (0 .. ctx->data_out_length-1));
 /*@
   @ requires \valid(ctx);
-  @ requires \separated(ctx, ctx->data_out_buffer + (0 .. ctx->data_out_length-1));
   @ assigns *ctx;
  */
 void dfu_init_context(dfu_context_t *ctx)
@@ -66,7 +65,7 @@ void dfu_init_context(dfu_context_t *ctx)
     uint8_t  **buffer = ctx->data_out_buffer != NULL ? ctx->data_out_buffer : 0;
     uint32_t  buffer_len = ctx->data_out_length != 0 ? ctx->data_out_length : 0;
 
-    /*@ assert buffer != NULL ==> \valid(buffer+(0..buffer_len-1)); */
+    /* @ assert buffer != NULL ==> \valid(buffer+(0..buffer_len-1)); */
     ctx->block_in_progress = 0;
     ctx->session_in_progress = 0;
     ctx->status = OK;
