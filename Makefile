@@ -168,7 +168,7 @@ FRAMAC_GEN_FLAGS:=\
 
 FRAMAC_EVA_FLAGS:=\
 		    -eva \
-		  -eva -main main -eva-slevel 500 \
+		  -eva -main fcpmo -eva-slevel 500 \
 		    -eva-domains symbolic-locations\
 		    -eva-domains equality \
 		    -eva-split-return auto \

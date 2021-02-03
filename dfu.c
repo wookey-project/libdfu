@@ -75,23 +75,34 @@ static uint32_t read_cnt = 0;
           &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
           &GHOST_opaque_drv_privates
           );
-  @ assigns dfu_usb_read_in_progress, GHOST_opaque_drv_privates;
-  */
-/*PMO to do as dfu_usb_driver_stall_out */
+	  @ assigns ready_for_data_receive,GHOST_opaque_drv_privates, 
+	  dfu_usb_read_in_progress, dfu_context.data_to_store, 
+	  dfu_usb_write_in_progress, dfu_context.block_in_progress, 
+	  dfu_context.poll_start, dfu_context.poll_timeout_ms;  */
 void dfu_usb_driver_setup_read(void *dst, uint32_t size){
-	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
-        request_data_membarrier();
-#ifdef __FRAMAC__
-        /* emulate asyncrhonous events */
-        if (dfu_usb_read_in_progress == true) {
-            dfu_data_out_handler(0,0,0);
-        }
-        if (dfu_usb_write_in_progress == true) {
-            dfu_data_in_handler(0,0,0);
-        }
-#endif
-		continue;
+#ifdef __FRAMAC__ //pmo to check
+  /*@ loop assigns ready_for_data_receive, dfu_usb_read_in_progress,
+    dfu_context.data_to_store; */
+	while(dfu_usb_read_in_progress == true){
+	  request_data_membarrier();
+	  /* emulate asyncrhonous events */
+	  dfu_data_out_handler(0,0,0);
+	  continue;
 	}
+	/*@ loop assigns dfu_usb_write_in_progress, dfu_context.block_in_progress,
+	  dfu_context.poll_start, dfu_context.poll_timeout_ms; */
+	while(dfu_usb_write_in_progress == true){
+	  request_data_membarrier();
+	  /* emulate asyncrhonous events */
+	  dfu_data_in_handler(0,0,0);
+	  continue;
+	}
+#else
+	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+	  request_data_membarrier();
+	    continue;
+	}
+#endif	
 	set_bool_with_membarrier(&dfu_usb_read_in_progress, true);
 #if CONFIG_USR_LIB_DFU_DEBUG
 	log_printf("==> READ %d dfu_usb_driver_setup_read %d\n", read_cnt, size);
@@ -132,7 +143,7 @@ static void dfu_usb_driver_stall_out(void){
 	  request_data_membarrier();
 	    continue;
 	}
-#endif
+#endif	
 	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
 	log_printf("==> SEND dfu_usb_driver_stall_out\n");
     /* XXX: replace 0 with ep->ep_id */
@@ -154,27 +165,38 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 
 /*@
   @ requires \separated(&dfu_usb_write_in_progress, &GHOST_opaque_drv_privates);
-  @ assigns dfu_usb_write_in_progress, GHOST_opaque_drv_privates;
-  */
+  @ assigns ready_for_data_receive,GHOST_opaque_drv_privates, dfu_usb_read_in_progress,
+            dfu_context.data_to_store, dfu_usb_write_in_progress, 
+	    dfu_context.block_in_progress, dfu_context.poll_start, dfu_context.poll_timeout_ms;  */
 void dfu_usb_driver_setup_send(const void *src, uint32_t size) {
-	while ((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)) {
-        request_data_membarrier();
-#ifdef __FRAMAC__
-        /* emulate asyncrhonous events */
-        if (dfu_usb_read_in_progress == true) {
-            dfu_data_out_handler(0,0,0);
-        }
-        if (dfu_usb_write_in_progress == true) {
-            dfu_data_in_handler(0,0,0);
-        }
-#endif
-		continue;
+#ifdef __FRAMAC__ //pmo to check
+  /*@ loop assigns ready_for_data_receive, dfu_usb_read_in_progress,
+    dfu_context.data_to_store; */
+	while(dfu_usb_read_in_progress == true){
+	  request_data_membarrier();
+	  /* emulate asyncrhonous events */
+	  dfu_data_out_handler(0,0,0);
+	  continue;
 	}
+	/*@ loop assigns dfu_usb_write_in_progress, dfu_context.block_in_progress,
+	  dfu_context.poll_start, dfu_context.poll_timeout_ms; */
+	while(dfu_usb_write_in_progress == true){
+	  request_data_membarrier();
+	  /* emulate asyncrhonous events */
+	  dfu_data_in_handler(0,0,0);
+	  continue;
+	}
+#else
+	while((dfu_usb_read_in_progress == true) || (dfu_usb_write_in_progress == true)){
+	  request_data_membarrier();
+	    continue;
+	}
+#endif
 	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
 	log_printf("==> SEND dfu_usb_driver_setup_send %d\n", size);
-    /* XXX: replace 0 with ep->ep_id */
-    usb_backend_drv_send_data((uint8_t *)src, size, 0);
-    usb_backend_drv_ack(0, USB_BACKEND_DRV_EP_DIR_OUT);
+	/* XXX: replace 0 with ep->ep_id */
+	usb_backend_drv_send_data((uint8_t *)src, size, 0);
+	usb_backend_drv_ack(0, USB_BACKEND_DRV_EP_DIR_OUT);
 	return;
 }
 
@@ -417,9 +439,19 @@ static inline void dfu_set_status(const dfu_status_enum_t new_status) {
 }
 
 
-/*@
+/*@ 
   @ assigns dfu_context.state;
+  @
+  @ behavior pb :
+  @ assumes new_state == 0xff;
+  @ ensures dfu_context.state == DFUERROR;
+  @
+  @ behavior ok :
+  @ assumes new_state != 0xff;
   @ ensures dfu_context.state == new_state;
+  @
+  @ complete behaviors;
+  @ disjoint behaviors;
  */
 static inline void dfu_set_state(const uint8_t new_state)
 {
@@ -448,6 +480,7 @@ void dfu_set_poll_timeout(uint32_t t, uint64_t timestamp)
     uint8_t ret;
 
     log_printf("setting poll_timeout_ms to %d\n", t);
+    /* PMO warning 32bits dans 16bits */
     dfu_ctx->poll_timeout_ms = t;
     ret = sys_get_systick(&ms, PREC_MILLI);
     if (ret != SYS_E_DONE) {
@@ -1608,7 +1641,7 @@ static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
 /*@ behavior ok:
   @ assumes dfu_cmd_queue_empty == \true;
   @ assigns \nothing;
-  @ ensures \result==MBED_ERROR_NONE ; */
+  @ ensures \result == MBED_ERROR_NONE ; */
 static mbed_error_t dfu_class_execute_request(void)
 {
     request_queue_node_t *current_dfu_cmd_p = NULL;
@@ -1618,13 +1651,14 @@ static mbed_error_t dfu_class_execute_request(void)
     {
         return MBED_ERROR_NONE;
     }
-
+    /*@ assert dfu_cmd_queue_empty == \true ;*/
     enter_critical_section();
     if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
         log_printf("Unable to dequeue command!\n");
         leave_critical_section();
         return MBED_ERROR_NOSTORAGE;
     }
+  
     current_dfu_cmd = *current_dfu_cmd_p;
     dfu_release_current_dfu_cmd(&current_dfu_cmd_p);
     if(queue_is_empty(dfu_cmd_queue)) {
@@ -1896,8 +1930,7 @@ mbed_error_t dfu_reinit(void)
 
 /* PMO */
 void fcpmo(void){
-  dfu_usb_read_in_progress=Frama_C_interval(0, 1);
-  dfu_usb_write_in_progress=Frama_C_interval(0, 1);
-  dfu_usb_driver_stall_out();
+  dfu_cmd_queue_empty=Frama_C_interval(0, 1);
+  dfu_class_execute_request();
 }
 
