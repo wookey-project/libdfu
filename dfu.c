@@ -75,9 +75,9 @@ static uint32_t read_cnt = 0;
           &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
           &GHOST_opaque_drv_privates
           );
-	  @ assigns ready_for_data_receive,GHOST_opaque_drv_privates, 
-	  dfu_usb_read_in_progress, dfu_context.data_to_store, 
-	  dfu_usb_write_in_progress, dfu_context.block_in_progress, 
+	  @ assigns ready_for_data_receive,GHOST_opaque_drv_privates,
+	  dfu_usb_read_in_progress, dfu_context.data_to_store,
+	  dfu_usb_write_in_progress, dfu_context.block_in_progress,
 	  dfu_context.poll_start, dfu_context.poll_timeout_ms;  */
 void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 #ifdef __FRAMAC__ //pmo to check
@@ -102,7 +102,7 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 	  request_data_membarrier();
 	    continue;
 	}
-#endif	
+#endif
 	set_bool_with_membarrier(&dfu_usb_read_in_progress, true);
 #if CONFIG_USR_LIB_DFU_DEBUG
 	log_printf("==> READ %d dfu_usb_driver_setup_read %d\n", read_cnt, size);
@@ -118,7 +118,7 @@ void dfu_usb_driver_setup_read(void *dst, uint32_t size){
 /*@
   @ requires \separated(&GHOST_opaque_drv_privates, &dfu_usb_write_in_progress);
   @ assigns ready_for_data_receive,GHOST_opaque_drv_privates, dfu_usb_read_in_progress,
-            dfu_context.data_to_store, dfu_usb_write_in_progress, 
+            dfu_context.data_to_store, dfu_usb_write_in_progress,
 	    dfu_context.block_in_progress, dfu_context.poll_start, dfu_context.poll_timeout_ms;  */
 static void dfu_usb_driver_stall_out(void){
 #ifdef __FRAMAC__ //pmo to check
@@ -143,7 +143,7 @@ static void dfu_usb_driver_stall_out(void){
 	  request_data_membarrier();
 	    continue;
 	}
-#endif	
+#endif
 	set_bool_with_membarrier(&dfu_usb_write_in_progress, true);
 	log_printf("==> SEND dfu_usb_driver_stall_out\n");
     /* XXX: replace 0 with ep->ep_id */
@@ -166,7 +166,7 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 /*@
   @ requires \separated(&dfu_usb_write_in_progress, &GHOST_opaque_drv_privates);
   @ assigns ready_for_data_receive,GHOST_opaque_drv_privates, dfu_usb_read_in_progress,
-            dfu_context.data_to_store, dfu_usb_write_in_progress, 
+            dfu_context.data_to_store, dfu_usb_write_in_progress,
 	    dfu_context.block_in_progress, dfu_context.poll_start, dfu_context.poll_timeout_ms;  */
 void dfu_usb_driver_setup_send(const void *src, uint32_t size) {
 #ifdef __FRAMAC__ //pmo to check
@@ -395,8 +395,11 @@ static const struct {
 
 /*@
   @ assigns \nothing;
-  @ ensures \result == dfu_context.poll_timeout_ms; 
+  @ ensures \result == dfu_context.poll_timeout_ms;
  */
+#ifndef __FRAMAC__
+static
+#endif
 uint32_t dfu_get_poll_timeout(void){
     dfu_context_t * dfu_ctx = dfu_get_context();
     return dfu_ctx->poll_timeout_ms;
@@ -404,18 +407,24 @@ uint32_t dfu_get_poll_timeout(void){
 
 /*@
   @ assigns \nothing;
-  @ ensures \result == dfu_context.state; 
+  @ ensures \result == dfu_context.state;
  */
-static inline uint8_t dfu_get_state() {
+#ifndef __FRAMAC__
+static inline
+#endif
+uint8_t dfu_get_state() {
     dfu_context_t * dfu_ctx = dfu_get_context();
     return dfu_ctx->state;
 }
 
 /*@
   @ assigns \nothing;
-  @ ensures \result == dfu_context.status; 
+  @ ensures \result == dfu_context.status;
  */
-static inline uint8_t dfu_get_status() {
+#ifndef __FRAMAC__
+static inline
+#endif
+uint8_t dfu_get_status() {
     dfu_context_t * dfu_ctx = dfu_get_context();
     return dfu_ctx->status;
 }
@@ -423,6 +432,9 @@ static inline uint8_t dfu_get_status() {
 /*@
   @ assigns \nothing;
  */
+#ifndef __FRAMAC__
+static
+#endif
 uint8_t dfu_get_status_string_id() {
     // TODO
     return 0;
@@ -432,14 +444,17 @@ uint8_t dfu_get_status_string_id() {
   @ assigns dfu_context.status;
   @ ensures dfu_context.status == new_status;
  */
-static inline void dfu_set_status(const dfu_status_enum_t new_status) {
+#ifndef __FRAMAC__
+static inline
+#endif
+void dfu_set_status(const dfu_status_enum_t new_status) {
     dfu_context_t * dfu_ctx = dfu_get_context();
     dfu_ctx->status = new_status;
     request_data_membarrier();
 }
 
 
-/*@ 
+/*@
   @ assigns dfu_context.state;
   @
   @ behavior pb :
@@ -453,7 +468,10 @@ static inline void dfu_set_status(const dfu_status_enum_t new_status) {
   @ complete behaviors;
   @ disjoint behaviors;
  */
-static inline void dfu_set_state(const uint8_t new_state)
+#ifndef __FRAMAC__
+static inline
+#endif
+void dfu_set_state(const uint8_t new_state)
 {
     dfu_context_t * dfu_ctx = dfu_get_context();
     if (new_state == 0xff) {
@@ -473,14 +491,16 @@ err:
 /*@
   @ assigns dfu_context.poll_timeout_ms,dfu_context.poll_start;
  */
-void dfu_set_poll_timeout(uint32_t t, uint64_t timestamp)
+#ifndef __FRAMAC__
+static
+#endif
+void dfu_set_poll_timeout(uint16_t t, uint64_t timestamp)
 {
     dfu_context_t * dfu_ctx = dfu_get_context();
     uint64_t ms;
     uint8_t ret;
 
     log_printf("setting poll_timeout_ms to %d\n", t);
-    /* PMO warning 32bits dans 16bits */
     dfu_ctx->poll_timeout_ms = t;
     ret = sys_get_systick(&ms, PREC_MILLI);
     if (ret != SYS_E_DONE) {
@@ -1658,7 +1678,7 @@ static mbed_error_t dfu_class_execute_request(void)
         leave_critical_section();
         return MBED_ERROR_NOSTORAGE;
     }
-  
+
     current_dfu_cmd = *current_dfu_cmd_p;
     dfu_release_current_dfu_cmd(&current_dfu_cmd_p);
     if(queue_is_empty(dfu_cmd_queue)) {
@@ -1747,7 +1767,7 @@ err:
 #ifndef __FRAMAC__
 static
 #endif
-/*@ assigns ready_for_data_receive, dfu_usb_read_in_progress, dfu_context.data_to_store; 
+/*@ assigns ready_for_data_receive, dfu_usb_read_in_progress, dfu_context.data_to_store;
   @ ensures \result == MBED_ERROR_NONE && ready_for_data_receive == \true && dfu_usb_read_in_progress ==\false && dfu_context.data_to_store == \true; */
 mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
                                   uint32_t size __attribute__((unused)),
@@ -1778,7 +1798,7 @@ mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
 #ifndef __FRAMAC__
 static
 #endif
-/*@ assigns dfu_usb_write_in_progress, dfu_context.block_in_progress, dfu_context.poll_start,dfu_context.poll_timeout_ms,dfu_context.poll_start ; 
+/*@ assigns dfu_usb_write_in_progress, dfu_context.block_in_progress, dfu_context.poll_start,dfu_context.poll_timeout_ms,dfu_context.poll_start ;
   @ ensures \result == MBED_ERROR_NONE && dfu_usb_write_in_progress == \false; */
 mbed_error_t dfu_data_in_handler(uint32_t dev_id __attribute__((unused)),
                                         uint32_t size __attribute__((unused)),
@@ -1928,9 +1948,10 @@ mbed_error_t dfu_reinit(void)
     return MBED_ERROR_NONE;
 }
 
+#ifdef __FRAMAC__
 /* PMO */
 void fcpmo(void){
   dfu_cmd_queue_empty=Frama_C_interval(0, 1);
   dfu_class_execute_request();
 }
-
+#endif

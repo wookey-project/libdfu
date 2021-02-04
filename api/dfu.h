@@ -59,6 +59,8 @@ typedef enum dfu_status_enum {
 
 //pmo
 #ifdef __FRAMAC__
+// PTH: should not be needed: set in libusbctrl.h through libusbctrl_framac.h
+// --> framaC complains for redefined
 #define usb_backend_drv_send_zlp usbotghs_send_zlp
 #define usb_backend_drv_set_recv_fifo usbotghs_set_recv_fifo
 #define usb_backend_drv_activate_endpoint usbotghs_activate_endpoint
