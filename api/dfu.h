@@ -66,7 +66,7 @@ typedef enum dfu_status_enum {
 #define usb_backend_drv_activate_endpoint usbotghs_activate_endpoint
 #define usb_backend_drv_stall usbotghs_endpoint_stall
 #define usb_backend_drv_send_data usbotghs_send_data
-#define usb_backend_drv_ack usbotghs_enpont_clear_nak
+#define usb_backend_drv_ack usbotghs_endpoint_clear_nak
 #endif
 
 
