@@ -167,8 +167,7 @@ FRAMAC_GEN_FLAGS:=\
 		    -instantiate
 
 FRAMAC_EVA_FLAGS:=\
-		    -eva \
-		  -eva -main dfu_store_data -eva-slevel 500 \
+		  -eva -main dfu_load_data -eva-slevel 500 \
 		    -eva-domains symbolic-locations\
 		    -eva-domains equality \
 		    -eva-split-return auto \
@@ -188,7 +187,7 @@ FRAMAC_WP_FLAGS:=\
 	        -wp \
 			-wp-model "Typed+ref+int" \
 			-wp-literals \
-			-wp-prover alt-ergo\
+			-wp-prover script,alt-ergo\
 -wp-check-memory-model\
 			-wp-timeout $(TIMEOUT) \
 			-wp-log a:frama-c-rte-eva-wp.log
