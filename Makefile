@@ -183,12 +183,21 @@ FRAMAC_EVA_FLAGS:=\
 		    -eva-use-spec queue_dequeue \
 		    -eva-log a:frama-c-rte-eva.log
 
+ifeq (22,$(FRAMAC_VERSION))
+FRAMAC_WP_SUPP_FLAGS=-wp-check-memory-model
+else
+FRAMAC_WP_SUPP_FLAGS=
+endif
+
+FRAMAC_WP_PROVERS ?= alt-ergo
+
+
 FRAMAC_WP_FLAGS:=\
 	        -wp \
 			-wp-model "Typed+ref+int" \
 			-wp-literals \
-			-wp-prover script,alt-ergo\
--wp-check-memory-model\
+			-wp-prover script,$(FRAMAC_WP_PROVERS)\
+			$(FRAMAC_WP_SUPP_FLAGS)\
 			-wp-timeout $(TIMEOUT) \
 			-wp-log a:frama-c-rte-eva-wp.log
 
