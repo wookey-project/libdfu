@@ -73,7 +73,7 @@ dfu_context_t * dfu_get_context(void)
 void dfu_init_context(dfu_context_t *ctx)
 {
     uint16_t transfert_size = ctx->transfert_size != 0 ? ctx->transfert_size : 0;
-    uint8_t  **buffer = ctx->data_out_buffer != NULL ? ctx->data_out_buffer : 0;
+    uint8_t  *buffer = ctx->data_out_buffer != NULL ? ctx->data_out_buffer : 0;
     uint32_t  buffer_len = ctx->data_out_length != 0 ? ctx->data_out_length : 0;
 
     /* @ assert buffer != NULL ==> \valid(buffer+(0..buffer_len-1)); */
@@ -85,7 +85,7 @@ void dfu_init_context(dfu_context_t *ctx)
     ctx->data_out_current_block_nb = 0;
     ctx->data_out_nb_blocks = 0;
     ctx->data_out_length = buffer_len;
-    ctx->data_in_buffer = (uint8_t**)buffer;
+    ctx->data_in_buffer = buffer;
     ctx->data_in_nb_blocks = 0;
     ctx->data_in_current_block_nb = 0;
     ctx->data_in_length = 0;

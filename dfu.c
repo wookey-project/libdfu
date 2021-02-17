@@ -1862,7 +1862,7 @@ static mbed_error_t dfu_class_execute_request(void)
     }
     /*@ assert dfu_cmd_queue_empty != true ;*/
     enter_critical_section();
-    if (queue_dequeue(dfu_cmd_queue, &current_dfu_cmd_p) != MBED_ERROR_NONE) {
+    if (queue_dequeue(dfu_cmd_queue, (void**)&current_dfu_cmd_p) != MBED_ERROR_NONE) {
       /*@ assert !\valid(dfu_cmd_queue) || !\valid(current_dfu_cmd_p) || dfu_cmd_queue->lock == 0 || dfu_cmd_queue->size == 0 ; */
       log_printf("Unable to dequeue command!\n");
       leave_critical_section();
@@ -2108,7 +2108,7 @@ mbed_error_t dfu_declare(uint32_t usbdci_handler)
   @ requires \separated(buffer + (..), &dfu_cmd_queue);
   @ assigns dfu_context.data_out_buffer, dfu_context.data_in_buffer, dfu_context.block_size, dfu_context.transfert_size, dfu_cmd_queue;*/
 //PMO functional part not done
-mbed_error_t dfu_init(uint8_t **buffer,
+mbed_error_t dfu_init(uint8_t *buffer,
                       uint16_t max_size)
 {
 
