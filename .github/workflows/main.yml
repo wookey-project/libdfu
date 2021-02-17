@@ -1,0 +1,14 @@
+on:
+  push:
+    branches:
+      - incoming
+
+# trigger workflow whenever a commit is pushed on incoming branch
+jobs:
+  trigger_workflow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: send trigger
+        shell: bash
+        run: |
+          curl -u ${{ secrets.FRAMAC_USER}}:${{secrets.FRAMAC_SECRET}} -X POST -H "Accept: application/vnd.github.v3+json"  https://api.github.com/repos/wookey-sdk/workflow/actions/workflows/libdfu.yml/dispatches -d '{"ref":"master"}'
