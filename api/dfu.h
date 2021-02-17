@@ -105,7 +105,7 @@ typedef enum dfu_status_enum {
  * \return 0 on success
  */
 /*@ assigns \nothing; */
-uint8_t dfu_backend_write(uint8_t ** volatile data,
+uint8_t dfu_backend_write(uint8_t * volatile  data,
                           const uint16_t      data_size,
                           uint16_t            blocknum);
 
@@ -165,7 +165,7 @@ mbed_error_t dfu_declare(uint32_t usbdci_handler);
  * @param buffer   the data buffer to use for storing data from/to USB FIFO
  * @param max_size the buffer size, at least 64, must be a power of 2.
  */
-mbed_error_t dfu_init(uint8_t **buffer,
+mbed_error_t dfu_init(uint8_t *buffer,
                       uint16_t max_size);
 
 

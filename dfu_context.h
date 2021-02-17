@@ -52,8 +52,8 @@ typedef struct  {
     uint16_t              block_size;
     uint16_t              transfert_size;
     uint32_t              firmware_size;
-    uint8_t **            data_out_buffer;
-    uint8_t **            data_in_buffer;
+    uint8_t *             data_out_buffer;
+    uint8_t *             data_in_buffer;
     uint16_t              data_out_current_block_nb;
     uint16_t              data_in_current_block_nb;
     uint32_t              current_block_offset;
