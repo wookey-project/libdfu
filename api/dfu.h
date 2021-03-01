@@ -57,6 +57,19 @@ typedef enum dfu_status_enum {
 } dfu_status_enum_t;
 
 
+//pmo
+#ifdef __FRAMAC__
+// PTH: should not be needed: set in libusbctrl.h through libusbctrl_framac.h
+// --> framaC complains for redefined
+#define usb_backend_drv_send_zlp usbotghs_send_zlp
+#define usb_backend_drv_set_recv_fifo usbotghs_set_recv_fifo
+#define usb_backend_drv_activate_endpoint usbotghs_activate_endpoint
+#define usb_backend_drv_stall usbotghs_endpoint_stall
+#define usb_backend_drv_send_data usbotghs_send_data
+#define usb_backend_drv_ack usbotghs_endpoint_clear_nak
+#endif
+
+
 /*****************************************************
  * externally supplied implementations prototypes
  *
@@ -64,7 +77,7 @@ typedef enum dfu_status_enum {
  * which include the libDFU. These functions implement
  * the backend storage access, which may vary depending on
  * the overall system implementation and which is not, as a
- * consequence, a DFU specific implementation.
+* consequence, a DFU specific implementation.
  *****************************************************/
 
 /*
@@ -91,7 +104,8 @@ typedef enum dfu_status_enum {
  *
  * \return 0 on success
  */
-uint8_t dfu_backend_write(uint8_t ** volatile data,
+/*@ assigns \nothing; */
+uint8_t dfu_backend_write(uint8_t * volatile  data,
                           const uint16_t      data_size,
                           uint16_t            blocknum);
 
@@ -103,6 +117,7 @@ uint8_t dfu_backend_write(uint8_t ** volatile data,
  *
  * \return 0 on success
  */
+/*@ assigns \nothing; */
 uint8_t dfu_backend_read(uint8_t *data, uint16_t data_size);
 
 /*
@@ -111,6 +126,7 @@ uint8_t dfu_backend_read(uint8_t *data, uint16_t data_size);
  * This function is used in DFU DNWLOAD mode only
  *
  */
+/*@ assigns \nothing; */
 void dfu_backend_eof(void);
 
 /*
@@ -149,7 +165,7 @@ mbed_error_t dfu_declare(uint32_t usbdci_handler);
  * @param buffer   the data buffer to use for storing data from/to USB FIFO
  * @param max_size the buffer size, at least 64, must be a power of 2.
  */
-mbed_error_t dfu_init(uint8_t **buffer,
+mbed_error_t dfu_init(uint8_t *buffer,
                       uint16_t max_size);
 
 

@@ -7,7 +7,6 @@ LIB_NAME ?= libdfu
 
 # project root directory, relative to app dir
 PROJ_FILES = ../../
-
 # library name, with extension
 LIB_FULL_NAME = $(LIB_NAME).a
 
@@ -168,9 +167,7 @@ FRAMAC_GEN_FLAGS:=\
 		    -instantiate
 
 FRAMAC_EVA_FLAGS:=\
-		    -eva \
-		    -eva-show-perf \
-		    -eva-slevel 500 \
+		  -eva -main dfu_load_data -eva-slevel 500 \
 		    -eva-domains symbolic-locations\
 		    -eva-domains equality \
 		    -eva-split-return auto \
@@ -186,15 +183,23 @@ FRAMAC_EVA_FLAGS:=\
 		    -eva-use-spec queue_dequeue \
 		    -eva-log a:frama-c-rte-eva.log
 
+ifeq (22,$(FRAMAC_VERSION))
+FRAMAC_WP_SUPP_FLAGS=-wp-check-memory-model
+else
+FRAMAC_WP_SUPP_FLAGS=
+endif
+
+FRAMAC_WP_PROVERS ?= alt-ergo
+
+
 FRAMAC_WP_FLAGS:=\
 	        -wp \
-  			-wp-model "Typed+ref+int" \
-  			-wp-literals \
-  			-wp-prover alt-ergo,cvc4,z3 \
-   			-wp-timeout $(TIMEOUT) \
-			-wp-smoke-tests \
-			-wp-no-smoke-dead-code \
-   			-wp-log a:frama-c-rte-eva-wp.log
+			-wp-model "Typed+ref+int" \
+			-wp-literals \
+			-wp-prover script,$(FRAMAC_WP_PROVERS)\
+			$(FRAMAC_WP_SUPP_FLAGS)\
+			-wp-timeout $(TIMEOUT) \
+			-wp-log a:frama-c-rte-eva-wp.log
 
 
 frama-c-parsing:
@@ -213,10 +218,10 @@ frama-c:
 	frama-c framac/entrypoint.c dfu*.c -c11 \
 		    $(FRAMAC_GEN_FLAGS) \
 			$(FRAMAC_EVA_FLAGS) \
-   		    -then \
+		    -then \
 			$(FRAMAC_WP_FLAGS) \
-   			-save $(SESSION) \
-   			-time $(TIMESTAMP)
+			-save $(SESSION) \
+			-time $(TIMESTAMP)
 
 frama-c-instantiate:
 	frama-c framac/entrypoint.c dfu*.c -c11 -machdep x86_32 \
