@@ -1528,8 +1528,6 @@ mbed_error_t dfu_request_clrstatus(usbctrl_setup_pkt_t *setup_packet)
     }
     /* Sanity check and next state detection */
     uint8_t next_state;
-    device_dfu_status_t status;
-    memset((void*)&status, 0, sizeof(device_dfu_status_t));
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
         goto invalid_transition;
     }
@@ -1560,8 +1558,6 @@ mbed_error_t dfu_request_getstate(usbctrl_setup_pkt_t *setup_packet)
     }
     /* Sanity check and next state detection */
     uint8_t next_state;
-    device_dfu_status_t status;
-    memset((void*)&status, 0, sizeof(device_dfu_status_t));
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
         goto invalid_transition;
     }
@@ -1610,8 +1606,6 @@ int dfu_request_abort(usbctrl_setup_pkt_t *setup_packet)
     }
     /* Sanity check and next state detection */
     uint8_t next_state;
-    device_dfu_status_t status;
-    memset((void*)&status, 0, sizeof(device_dfu_status_t));
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
         goto invalid_transition;
     }
