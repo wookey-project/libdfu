@@ -146,7 +146,8 @@ void test_fcn_dfu(){
 
     errcode = dfu_declare(ctxh1);
 
-    dfu_init((uint8_t**)&recv_buf, USB_BUF_SIZE);
+    uint8_t *buf = &recv_buf[0];
+    dfu_init(buf, USB_BUF_SIZE);
 
     usbctrl_start_device(ctxh1);
 
