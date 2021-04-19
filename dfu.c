@@ -35,6 +35,9 @@
 #include "libc/sanhandlers.h"
 #include "dfu_context.h"
 #include "libusbctrl.h"
+#ifdef __FRAMAC__
+#include "framac/entrypoint.h"
+#endif
 
 
 /* This variable are read/write in separated temporal windows, making
@@ -80,7 +83,7 @@ static uint32_t read_cnt = 0;
 	  dfu_usb_read_in_progress, dfu_context.data_to_store,
 	  dfu_usb_write_in_progress, dfu_context.block_in_progress,
 	  dfu_context.poll_start, dfu_context.poll_timeout_ms;  */
-void dfu_usb_driver_setup_read(void *dst, uint32_t size){
+void dfu_usb_driver_setup_read(uint8_t *dst, uint32_t size){
 #ifdef __FRAMAC__ //pmo to check
   /*@ loop assigns ready_for_data_receive, dfu_usb_read_in_progress,
     dfu_context.data_to_store; */
@@ -874,7 +877,7 @@ static void dfu_load_data(void)
          */
         goto err;
     }
-    dfu_backend_read((uint8_t*)dfu_ctx->data_in_buffer, dfu_ctx->data_in_length);
+    dfu_backend_read(dfu_ctx->data_in_buffer, dfu_ctx->data_in_length);
     // now set the write action as done
     dfu_ctx->data_in_current_block_nb += 1;
     request_data_membarrier();
@@ -1307,8 +1310,13 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
     }
     /* Sanity check and next state detection */
     uint8_t next_state;
-    device_dfu_status_t status;
-    memset((void*)&status, 0, sizeof(device_dfu_status_t));
+    /* we use a union here because setup_send is using generic buffer as input (i.e. const uint8_t*) */
+    union status_infos_t {
+        device_dfu_status_t data;
+        uint8_t             buf[sizeof(device_dfu_status_t)];
+    };
+    union status_infos_t status;
+
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
         goto invalid_transition;
     }
@@ -1320,34 +1328,40 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
         case APPIDLE:
             {
                 /* staying in APPIDLE */
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = 0;
+                status.data.bwPollTimeout[1] = 0;
+                status.data.bwPollTimeout[2] = 0;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 break;
             }
         case APPDETACH:
             {
                 /* staying in APPDETACH */
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = 0;
+                status.data.bwPollTimeout[1] = 0;
+                status.data.bwPollTimeout[2] = 0;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 break;
             }
         case DFUIDLE:
             {
                 /* staying in DFUIDLE */
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
-                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
-                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.data.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.data.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 break;
             }
         case DFUDNLOAD_SYNC:
@@ -1359,17 +1373,17 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 } else {
                     dfu_set_state(DFUDNLOAD_IDLE);
                 }
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
-                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
-                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.data.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.data.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
                 /* if a previous DNLOAD is not yet finished, wait before
                  * reconfiguring the USB device
                  */
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 // XXX pth:
                 request_data_membarrier();
                 break;
@@ -1410,17 +1424,17 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                     dfu_set_poll_timeout(0, 0);
                     dfu_set_state(DFUDNLOAD_IDLE);
                 }
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
-                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
-                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.data.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.data.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
                 /* if a previous DNLOAD is not yet finished, wait before
                  * reconfiguring the USB device
                  */
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 // XXX pth:
                 request_data_membarrier();
                 break;
@@ -1428,14 +1442,14 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
 
         case DFUDNLOAD_IDLE:
             {
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
-                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
-                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.data.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.data.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 break;
             }
         case DFUMANIFEST_SYNC:
@@ -1449,14 +1463,14 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 dfu_ctx->session_in_progress = 0;
                 dfu_set_state(DFUIDLE);
 
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
-                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
-                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.data.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.data.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 /* inform the upper layer that the download is complete */
                 dfu_backend_eof();
                 break;
@@ -1464,27 +1478,27 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
         case DFUUPLOAD_IDLE:
             {
                 /* stays in DFUUPLOAD_IDLE */
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
-                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
-                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.data.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.data.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 break;
             }
         case DFUERROR:
             {
                 /* stays in DFUERROR */
-                status.bStatus = dfu_get_status();
-                status.bState = dfu_get_state();
-                status.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
-                status.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
-                status.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
-                status.iString = dfu_get_status_string_id();
+                status.data.bStatus = dfu_get_status();
+                status.data.bwPollTimeout[0] = (dfu_get_poll_timeout() >>  0) & 0xFF;
+                status.data.bwPollTimeout[1] = (dfu_get_poll_timeout() >>  8) & 0xFF;
+                status.data.bwPollTimeout[2] = (dfu_get_poll_timeout() >> 16) & 0xFF;
+                status.data.bState = dfu_get_state();
+                status.data.iString = dfu_get_status_string_id();
 
-                dfu_usb_driver_setup_send((void*)&status, sizeof(status));
+                dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 break;
             }
         default:
@@ -1566,7 +1580,7 @@ mbed_error_t dfu_request_getstate(usbctrl_setup_pkt_t *setup_packet)
             {
                 uint8_t state = dfu_get_state();
 
-                dfu_usb_driver_setup_send((void*)&state, 1);
+                dfu_usb_driver_setup_send(&state, 1);
                 break;
             }
         default:
@@ -2158,7 +2172,7 @@ mbed_error_t dfu_reinit(void)
 #ifdef __FRAMAC__
 /* PMO */
 void fcpmo(void){
-  dfu_cmd_queue_empty=Frama_C_interval(0, 1);
+  dfu_cmd_queue_empty=Frama_C_interval_b(0, 1);
   queue_create(MAX_DFU_CMD_QUEUE_SIZE, &dfu_cmd_queue);
   dfu_usb_driver_setup_send_zlp();
 }
