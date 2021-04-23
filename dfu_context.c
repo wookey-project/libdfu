@@ -69,7 +69,9 @@ dfu_context_t * dfu_get_context(void)
 	  &ctx->firmware_size, &ctx->flash_address, &ctx->poll_start, &ctx->poll_timeout_ms,
 	  &ctx->session_in_progress, &ctx->state, &ctx->status, &ctx->transfert_size);
   @ requires \valid(ctx);
-  @ assigns ctx->block_in_progress, ctx->session_in_progress, ctx->status, ctx->state, ctx->data_out_buffer, ctx->data_in_buffer, ctx->data_out_current_block_nb, ctx->data_out_nb_blocks, ctx->data_out_length, ctx->data_in_nb_blocks, ctx-> data_in_current_block_nb, ctx->data_in_length, ctx->flash_address, ctx->detach_timeout_ms, ctx->detach_timeout_start, ctx->poll_timeout_ms, ctx->poll_start, ctx->block_size, ctx->transfert_size, ctx->firmware_size, ctx->current_block_offset, ctx->data_to_store, ctx->data_to_load, ctx->can_download, ctx->can_upload, *((char*)&ctx->iface+ (0 .. sizeof(usbctrl_interface_t) -1)) ;
+  @ assigns *ctx, dfu_context ;
+*/
+/*  @ assigns ctx->block_in_progress, ctx->session_in_progress, ctx->status, ctx->state, ctx->data_out_buffer, ctx->data_in_buffer, ctx->data_out_current_block_nb, ctx->data_out_nb_blocks, ctx->data_out_length, ctx->data_in_nb_blocks, ctx-> data_in_current_block_nb, ctx->data_in_length, ctx->flash_address, ctx->detach_timeout_ms, ctx->detach_timeout_start, ctx->poll_timeout_ms, ctx->poll_start, ctx->block_size, ctx->transfert_size, ctx->firmware_size, ctx->current_block_offset, ctx->data_to_store, ctx->data_to_load, ctx->can_download, ctx->can_upload, *((char*)&ctx->iface+ (0 .. sizeof(usbctrl_interface_t) -1)), dfu_context ;
  @*/
 void dfu_init_context(dfu_context_t *ctx)
 {

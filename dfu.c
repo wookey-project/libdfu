@@ -536,7 +536,6 @@ void dfu_set_poll_timeout(uint16_t t, uint64_t timestamp)
  */
 /*@
   @ requires APPIDLE <= current_state <= DFUERROR;
-  @ requires USB_RQST_DFU_DETACH <= request <= USB_RQST_DFU_ABORT;
   @ assigns \nothing;
   // TODO: specify function contract
  */
@@ -565,18 +564,34 @@ static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
  *
  * \return true if the transition request is allowed for this state, or false
  */
+
 /* @
 
   @ requires USB_RQST_DFU_DETACH <= request <= USB_RQST_DFU_ABORT;
   @ requires \separated(dfu_automaton + (0 .. DFUERROR),&dfu_context.state);*/
 
 // PMO en mode behavior KO assigns ne passe pas
+
 /* @
   @ requires APPIDLE <= current_state <= DFUERROR;
   @ requires \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
   @ requires \separated(&GHOST_opaque_libusbdci_privates, &GHOST_num_ctx, (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
   &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
   &ready_for_data_receive, &ready_for_data_send,  &dfu_context.state );
+  @ assigns dfu_context.state;
+  @ ensures \result == \true <==> (\exists integer i; 0 <= i < 5 && dfu_automaton[current_state].req_trans[i].request == request) && (dfu_context.state == \old(dfu_context.state)); 
+  @ ensures \result == \false <==> (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[current_state].req_trans[i].request != request) && (dfu_context.state == DFUERROR);
+ */
+// @ requires \separated(dfu_automaton + (0 .. DFUERROR),&dfu_context.state);
+
+// PMO en mode behavior KO assigns ne passe pas 
+/*@ 
+  @ requires APPIDLE <= current_state <= DFUERROR;
+  @ requires \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
+  @ requires \separated((struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (0..DFUERROR),
+			 &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress, 
+			 &ready_for_data_receive, &ready_for_data_send,  &dfu_context.state, 
+			 &GHOST_opaque_drv_privates );
   @
   @ behavior OK:
   @ assumes  \exists integer i; 0 <= i < 5 && dfu_automaton[current_state].req_trans[i].request == request ;
@@ -591,15 +606,16 @@ static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
   @ complete behaviors;
   @ disjoint behaviors;
  */
-/*@
+
+/* @
   @ requires APPIDLE <= current_state <= DFUERROR;
   @ requires \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
   @ requires \separated(&GHOST_opaque_libusbdci_privates, &GHOST_num_ctx, (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
-  &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
-  &ready_for_data_receive, &ready_for_data_send,  &dfu_context.state );
+  &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress, &ready_for_data_receive, &ready_for_data_send,  &dfu_context.state );
   @ ensures \result == \true <==> (\exists integer i; 0 <= i < 5 && dfu_automaton[current_state].req_trans[i].request == request) && (dfu_context.state == \old(dfu_context.state));
   @ ensures \result == \false <==> (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[current_state].req_trans[i].request != request) && (dfu_context.state == DFUERROR);
  */
+
 static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
         dfu_request_t    request)
 {
@@ -1065,6 +1081,13 @@ invalid_transition:
 /*
  * Handle DFU_DNLOAD event
  */
+/*@
+  @ requires \separated(
+              setup_packet + (..), 
+              (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
+              &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
+              &ready_for_data_receive, &ready_for_data_send);
+ */
 mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
 {
     log_printf("%s\n", __func__);
@@ -1174,6 +1197,15 @@ size_too_big:
 }
 
 /*@
+  @ requires \separated(
+              (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
+              &num_ctx, &ready_for_data_send, &dfu_context.state,
+	      &ready_for_data_receive, &dfu_usb_read_in_progress,
+            &dfu_context.data_to_store, &dfu_usb_write_in_progress,
+            &dfu_context.block_in_progress, &dfu_context.poll_start,
+            &dfu_context.poll_timeout_ms, &GHOST_opaque_drv_privates,
+            &dfu_context.status);
+  @ requires OK <= new_status <= ERRSTALLEDPKT;
   @ assigns dfu_context.state,ready_for_data_receive, dfu_usb_read_in_progress,
             dfu_context.data_to_store, dfu_usb_write_in_progress,
             dfu_context.block_in_progress, dfu_context.poll_start,
@@ -1505,6 +1537,10 @@ invalid_transition:
 /*
  * Handle DFU_CLEAR_STATUS event
  */
+
+/*@
+  @ assigns dfu_context, dfu_usb_write_in_progress, GHOST_opaque_drv_privates, ready_for_data_receive,            dfu_usb_read_in_progress, GHOST_opaque_drv_privates;
+ */
 mbed_error_t dfu_request_clrstatus(usbctrl_setup_pkt_t *setup_packet)
 {
     dfu_context_t *dfu_ctx = dfu_get_context();
@@ -1585,7 +1621,7 @@ invalid_transition:
  * Handle DFU_ABORT event
  */
 
-/*@ assigns dfu_context.state ; */
+/*@ assigns dfu_context, dfu_usb_write_in_progress, GHOST_opaque_drv_privates, ready_for_data_receive, dfu_usb_read_in_progress; */
 
 int dfu_request_abort(usbctrl_setup_pkt_t *setup_packet)
 {
@@ -1749,6 +1785,8 @@ mbed_error_t dfu_class_parse_request(uint32_t usbdci_handler __attribute__((unus
     log_printf("[handler mode] ENQUEUINQ => state %d, req %d\n", dfu_get_state(), setup_packet->bRequest);
     /*@ assert \valid(&cur_req) && sizeof(request_queue_node_t)!=0;*/
     ret = wmalloc((void**)&cur_req, sizeof(request_queue_node_t), ALLOC_NORMAL);
+    /*@ assert ret ==0 ; */
+    /*@ assert \valid(*(& cur_req + (0.. sizeof(request_queue_node_t)))); */
     if (ret != 0) {
         log_printf("Error while allocating queue !!!\n");
         errcode = MBED_ERROR_NOMEM;
@@ -1837,16 +1875,18 @@ static void dfu_release_current_dfu_cmd(request_queue_node_t **current_dfu_cmd)
 #pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 #endif
 /*PMO todo with other bahaviors */
-/*@ behavior ok:
-  @ assumes dfu_cmd_queue_empty == true;
-  @ assigns \nothing;
-  @ ensures \result == MBED_ERROR_NONE ;
-  @
-  @ behavior ERROR_storage:
-  @ assumes dfu_cmd_queue_empty != true;
+/*   @ behavior ERROR_storage:
+  @ assumes dfu_cmd_queue_empty != \true;
   @ assumes !\valid(dfu_cmd_queue) ||  dfu_cmd_queue->lock == 0 || dfu_cmd_queue->size == 0 ;
   @ assigns \nothing;
   @ ensures \result == MBED_ERROR_NOSTORAGE;
+  @ */
+
+/* @ 
+  @ behavior ok:
+  @ assumes dfu_cmd_queue_empty == \true;
+  @ assigns \nothing;
+  @ ensures \result == MBED_ERROR_NONE ;
   @
   @ complete behaviors;
   @ disjoint behaviors;
@@ -2146,6 +2186,20 @@ mbed_error_t dfu_init(uint8_t *buffer,
     return MBED_ERROR_NONE;
 }
 
+/*@  
+  @ assigns dfu_context.block_in_progress, dfu_context.session_in_progress, dfu_context.status,
+            dfu_context.state, dfu_context.data_out_buffer, dfu_context.data_in_buffer,
+            dfu_context.data_out_current_block_nb, dfu_context.data_out_nb_blocks,
+            dfu_context.data_out_length, dfu_context.data_in_nb_blocks,
+            dfu_context.data_in_current_block_nb, dfu_context.data_in_length,
+            dfu_context.flash_address, dfu_context.detach_timeout_ms,
+            dfu_context.detach_timeout_start, dfu_context.poll_timeout_ms, dfu_context.poll_start,
+            dfu_context.block_size, dfu_context.transfert_size, dfu_context.firmware_size,
+            dfu_context.current_block_offset, dfu_context.data_to_store, dfu_context.data_to_load,
+            dfu_context.can_download, dfu_context.can_upload,
+            *((char *)(&dfu_context.iface) + (0 .. sizeof(usbctrl_interface_t) - 1));
+	    @ ensures dfu_context.state == DFUIDLE && \result == MBED_ERROR_NONE; 
+*/
 mbed_error_t dfu_reinit(void)
 {
     dfu_context_t *dfu_ctx = dfu_get_context();

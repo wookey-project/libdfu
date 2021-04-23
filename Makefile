@@ -167,7 +167,7 @@ FRAMAC_GEN_FLAGS:=\
 		    -instantiate
 
 FRAMAC_EVA_FLAGS:=\
-		  -eva -main dfu_load_data -eva-slevel 500 \
+		  -eva -main dfu_init_context -eva-slevel 500 \
 		    -eva-domains symbolic-locations\
 		    -eva-domains equality \
 		    -eva-split-return auto \
@@ -184,7 +184,7 @@ FRAMAC_EVA_FLAGS:=\
 		    -eva-log a:frama-c-rte-eva.log
 
 ifeq (22,$(FRAMAC_VERSION))
-FRAMAC_WP_SUPP_FLAGS=-wp-check-memory-model
+FRAMAC_WP_SUPP_FLAGS=
 else
 FRAMAC_WP_SUPP_FLAGS=
 endif
