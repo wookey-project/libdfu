@@ -112,7 +112,20 @@ void dfu_init_context(dfu_context_t *ctx)
     ctx->can_upload = false;
 #endif
 
+#ifndef __FRAMAC__
     memset((void*)&ctx->iface, 0x0, sizeof(usbctrl_interface_t));
+#else
+    ctx->iface.id = 0;
+    ctx->iface.usb_class = 0;
+    ctx->iface.usb_subclass = 0;
+    ctx->iface.usb_protocol = 0;
+    ctx->iface.dedicated = 0;
+    ctx->iface.rqst_handler = NULL;
+    ctx->iface.class_desc_handler = NULL;
+    ctx->iface.usb_ep_number = 0;
+    ctx->iface.composite_function = false;
+    ctx->iface.composite_function_id = 0;
+#endif
     request_data_membarrier();
 }
 
