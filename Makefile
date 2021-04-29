@@ -167,16 +167,20 @@ FRAMAC_GEN_FLAGS:=\
 		    -instantiate
 
 FRAMAC_EVA_FLAGS:=\
-		  -eva -main dfu_load_data -eva-slevel 500 \
+		  -eva -main main -eva-slevel 400 \
+		    -eva-slevel-function  dfu_exec_automaton:400 \
 		    -eva-domains symbolic-locations\
 		    -eva-domains equality \
 		    -eva-split-return auto \
-		    -eva-partition-history 3 \
+		    -eva-partition-history 2 \
 		    -eva-use-spec usbctrl_declare \
 		    -eva-use-spec usbctrl_initialize \
 		    -eva-use-spec usbctrl_declare_interface \
 		    -eva-use-spec usbctrl_start_device \
 		    -eva-use-spec wmalloc \
+		    -eva-use-spec dfu_backend_write \
+		    -eva-use-spec dfu_backend_read \
+		    -eva-use-spec dfu_backend_eof \
 		    -eva-use-spec queue_create \
 		    -eva-use-spec queue_is_empty \
 		    -eva-use-spec queue_enqueue \

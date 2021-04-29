@@ -117,7 +117,9 @@ uint8_t dfu_backend_write(uint8_t * volatile  data,
  *
  * \return 0 on success
  */
-/*@ assigns \nothing; */
+/*@ requires \valid(data + (0 .. data_size-1));
+  @ assigns data[0 .. data_size-1];
+  */
 uint8_t dfu_backend_read(uint8_t *data, uint16_t data_size);
 
 /*
