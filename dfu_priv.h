@@ -54,6 +54,7 @@ typedef struct __packed {
         uint32_t dwCRC;
 } dfu_suffix_t;
 
+
 typedef enum dfu_request {
  USB_RQST_DFU_DETACH            =  0x00,
  USB_RQST_DFU_DNLOAD            =  0x01,
@@ -78,7 +79,6 @@ typedef enum dfu_state_enum {
     DFUERROR                	= 0x0A,
 }dfu_state_enum_t;
 
-
 typedef struct __packed {
     uint8_t bStatus;
     uint8_t bwPollTimeout[3];
@@ -88,6 +88,33 @@ typedef struct __packed {
 
 
 #ifdef __FRAMAC__
+
+#define MAX_TRANSITION_DFU_STATE 7
+
+/*@ predicate is_valid_dfu_state(dfu_state_enum_t i) =
+        i == APPIDLE ||
+        i == APPDETACH ||
+        i == DFUIDLE ||
+        i == DFUDNLOAD_SYNC ||
+        i == DFUDNBUSY ||
+        i == DFUDNLOAD_IDLE ||
+        i == DFUMANIFEST_SYNC ||
+        i == DFUMANIFEST ||
+        i == DFUMANIFEST_WAIT_RESET ||
+        i == DFUUPLOAD_IDLE ||
+        i == DFUERROR ;
+*/
+
+/*@ predicate is_valid_dfu_request(dfu_request_t i) =
+        i == USB_RQST_DFU_DETACH ||
+        i == USB_RQST_DFU_DNLOAD ||
+        i == USB_RQST_DFU_UPLOAD ||
+        i == USB_RQST_DFU_GET_STATUS ||
+        i == USB_RQST_DFU_CLEAR_STATUS ||
+        i == USB_RQST_DFU_GET_STATE ||
+        i == USB_RQST_DFU_ABORT ;
+*/
+
 /*
  * export internal dfu functions to emulate asynchronous triggers from framaC entrypoint
  */

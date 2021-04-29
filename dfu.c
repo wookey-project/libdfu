@@ -82,10 +82,14 @@ static uint32_t read_cnt = 0;
 	  @ assigns ready_for_data_receive,GHOST_opaque_drv_privates,
 	  dfu_usb_read_in_progress, dfu_context.data_to_store,
 	  dfu_usb_write_in_progress, dfu_context.block_in_progress,
-	  dfu_context.poll_start, dfu_context.poll_timeout_ms;  */
+	  dfu_context.poll_start, dfu_context.poll_timeout_ms; 
+
+
+      
+*/
 void dfu_usb_driver_setup_read(uint8_t *dst, uint32_t size){
 #ifdef __FRAMAC__ //pmo to check
-  /*@ loop assigns ready_for_data_receive, dfu_usb_read_in_progress,
+    /*@ loop assigns ready_for_data_receive, dfu_usb_read_in_progress,
     dfu_context.data_to_store; */
 	while(dfu_usb_read_in_progress == true){
 	  request_data_membarrier();
@@ -93,7 +97,7 @@ void dfu_usb_driver_setup_read(uint8_t *dst, uint32_t size){
 	  dfu_data_out_handler(0,0,0);
 	  continue;
 	}
-	/*@ loop assigns dfu_usb_write_in_progress, dfu_context.block_in_progress,
+    /*@ loop assigns dfu_usb_write_in_progress, dfu_context.block_in_progress,
 	  dfu_context.poll_start, dfu_context.poll_timeout_ms; */
 	while(dfu_usb_write_in_progress == true){
 	  request_data_membarrier();
@@ -175,7 +179,7 @@ static void dfu_usb_driver_setup_send_status(int status __attribute__((unused)))
 	    dfu_context.block_in_progress, dfu_context.poll_start,
 	    dfu_context.poll_timeout_ms, GHOST_in_eps[0].state;
  */
-// PMO to check j'ai moddifie le type d'arguement 1 de void * en uint8_t *
+// PMO to check j'ai modifie le type d'arguement 1 de void * en uint8_t *
 void dfu_usb_driver_setup_send(const uint8_t *src, uint32_t size) {
 #ifdef __FRAMAC__ //pmo to check
   /*@ loop assigns ready_for_data_receive, dfu_usb_read_in_progress,
@@ -464,13 +468,15 @@ void dfu_set_status(const dfu_status_enum_t new_status) {
 
 /*@
   @ requires \valid(&dfu_context.state);
+  @ requires is_valid_dfu_state(new_state);
+
   @ behavior pb :
-  @ assumes new_state == 0xff;
+  @ assumes new_state >= DFUERROR;
   @ assigns dfu_context.state;
   @ ensures dfu_context.state == DFUERROR;
   @
   @ behavior ok :
-  @ assumes new_state != 0xff;
+  @ assumes new_state < DFUERROR;
   @ assigns  dfu_context.state;
   @ ensures dfu_context.state == new_state;
   @
@@ -483,7 +489,8 @@ static inline
 void dfu_set_state(const uint8_t new_state)
 {
     dfu_context_t * dfu_ctx = dfu_get_context();
-    if (new_state == 0xff) {
+    // CDE : new test to check invalid dfu state
+    if (new_state >= DFUERROR) {
         /* should never happen ! fault protection code */
         log_printf("PANIC! this should never happen. goto DFUERROR !");
         dfu_ctx->state = DFUERROR;
@@ -537,24 +544,45 @@ void dfu_set_poll_timeout(uint16_t t, uint64_t timestamp)
  *
  * \return the next state, or 0xff
  */
-/*@
+
+
+/* @
   @ requires APPIDLE <= current_state <= DFUERROR;
   @ requires USB_RQST_DFU_DETACH <= request <= USB_RQST_DFU_ABORT;
   @ assigns \nothing;
   // TODO: specify function contract
  */
-static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
-        dfu_request_t    request)
+
+/* CDE function identical as usbctrl_next_state so fcn contract is similar
+   TODO : ensure \result == 0xff cannot be easily prooved, bacause transition table does not define precisely target_state
+*/
+
+/*@
+  @ requires is_valid_dfu_state(current_state);
+  @ requires is_valid_dfu_request(request);
+  @ assigns \nothing ;
+  @ ensures (\result != 0xff) ==> (\exists integer i; 0 <= i < 5 && dfu_automaton[current_state].req_trans[i].request == request
+            && \result == dfu_automaton[current_state].req_trans[i].target_state) ;
+  @ ensures (\result == 0xff) ==> (\forall integer i; 0 <= i < 5 ==> dfu_automaton[current_state].req_trans[i].request != request);
+*/
+
+static uint8_t dfu_next_state(dfu_state_enum_t  current_state, dfu_request_t    request)
 {
-  /*@ loop invariant 0<=i<=5;
-    @ loop assigns i;
-    @ loop variant 5-i ; */
+  /*@
+      @ loop invariant 0 <= i <= 5 ;
+      @ loop invariant \valid_read(dfu_automaton[current_state].req_trans + (0..(5 -1)));
+      @ loop invariant (\forall integer prei ; 0 <= prei < i ==> dfu_automaton[current_state].req_trans[prei].request != request) ;
+      @ loop assigns i ;
+      @ loop variant 5 -i ;
+  */
+
   for (uint8_t i = 0; i < 5; ++i) {
         if (dfu_automaton[current_state].req_trans[i].request == request) {
             return (dfu_automaton[current_state].req_trans[i].target_state);
         }
     }
     /* fallback, no corresponding request found for  this state */
+    /*@ assert (\forall integer i; 0 <= i < 5 ==> dfu_automaton[current_state].req_trans[i].request != request) ; */
     return 0xff;
 }
 
@@ -574,6 +602,9 @@ static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
   @ requires \separated(dfu_automaton + (0 .. DFUERROR),&dfu_context.state);*/
 
 // PMO en mode behavior KO assigns ne passe pas
+/* CDE j'ai eu le même probleme avec usbctrl_is_valid_transition, je n'ai pas mis de behavior du coup
+       les behaviors compliquent les preuves pour les fonctions appelantes en plus  */
+
 /* @
   @ requires APPIDLE <= current_state <= DFUERROR;
   @ requires \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
@@ -594,20 +625,26 @@ static uint8_t dfu_next_state(dfu_state_enum_t  current_state,
   @ complete behaviors;
   @ disjoint behaviors;
  */
+
+// CDE TODO : ensures proove equivalence for \result == \false
+
 /*@
-  @ requires APPIDLE <= current_state <= DFUERROR;
+  @ requires is_valid_dfu_state(current_state);
+  @ requires is_valid_dfu_request(request);
+  @ requires is_valid_dfu_state(dfu_context.state);
   @ requires \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
   @ requires \separated(&GHOST_opaque_libusbdci_privates, &GHOST_num_ctx, (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
   &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
   &ready_for_data_receive, &ready_for_data_send,  &dfu_context.state );
   @ ensures \result == \true <==> (\exists integer i; 0 <= i < 5 && dfu_automaton[current_state].req_trans[i].request == request) && (dfu_context.state == \old(dfu_context.state));
-  @ ensures \result == \false <==> (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[current_state].req_trans[i].request != request) && (dfu_context.state == DFUERROR);
+  @ ensures (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[current_state].req_trans[i].request != request) && (dfu_context.state == DFUERROR) ==> (\result == \false) ;
  */
 static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
         dfu_request_t    request)
 {
   /*@ loop invariant 0 <= i <= 5;
     @ loop invariant \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
+    @ loop invariant dfu_context.state == \at(dfu_context.state, Pre) ; 
     @ loop invariant (\forall integer prei; 0 <= prei < i ==> dfu_automaton[current_state].req_trans[prei].request != request);
     @ loop assigns i;
     @ loop variant 5-i;
@@ -620,9 +657,7 @@ static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
 	  return true;
         }
     }
-
     /*@ assert (\forall integer i; 0 <= i < 5 ==> dfu_automaton[current_state].req_trans[i].request != request) ; */
-
     /*@ assert dfu_context.state == \at(dfu_context.state, Pre); */
     /*@ assert dfu_context == \at(dfu_context, Pre); */
     /*
@@ -632,6 +667,7 @@ static bool dfu_is_valid_transition(dfu_state_enum_t current_state,
     log_printf("invalid transition from state %d, request %d\n", current_state, request);
     dfu_set_state(DFUERROR);
     /*@ assert dfu_context.state == DFUERROR; */
+    /* @ assert (\forall integer i; 0 <= i < 5 ==> dfu_automaton[current_state].req_trans[i].request != request) ; */
     return false;
 }
 
@@ -806,13 +842,14 @@ static uint8_t dfu_validate_memory_policy(uint32_t addr __attribute__((unused)),
 
 /*@
   @ behavior not_busy_and_not_load_sync :
-  @ assumes dfu_context.state != DFUDNBUSY && dfu_context.state != DFUDNLOAD_SYNC;
-  @ assigns \nothing;
+        @ assumes dfu_context.state != DFUDNBUSY && dfu_context.state != DFUDNLOAD_SYNC;
+        @ assigns \nothing;
+ 
   @
   @ behavior busy_or_load_sync :
-  @ assumes !(dfu_context.state != DFUDNBUSY && dfu_context.state != DFUDNLOAD_SYNC);
-  @ assigns dfu_context.data_out_current_block_nb, dfu_context.data_to_store;
-  @ ensures dfu_context.data_out_current_block_nb == \old(dfu_context.data_out_current_block_nb)+1 && dfu_context.data_to_store == \false;
+        @ assumes !(dfu_context.state != DFUDNBUSY && dfu_context.state != DFUDNLOAD_SYNC);
+        @ assigns dfu_context.data_out_current_block_nb, dfu_context.data_to_store;
+        @ ensures dfu_context.data_out_current_block_nb == \old(dfu_context.data_out_current_block_nb)+1 && dfu_context.data_to_store == \false;
   @
   @ complete behaviors;
   @ disjoint behaviors;
@@ -939,6 +976,9 @@ void dfu_store_finished(void)
             dfu_usb_write_in_progress, dfu_context.block_in_progress,
             dfu_context.poll_start, dfu_context.poll_timeout_ms,
             GHOST_in_eps[0].state;
+
+  @ complete behaviors;
+  @ disjoint behaviors;
 @*/
 void dfu_load_finished(uint16_t bytes_read)
 {
@@ -988,14 +1028,21 @@ void dfu_load_finished(uint16_t bytes_read)
  */
 // PMO todo with others behaviors
 /*@ behavior notdfundbusy:
-  @ assumes dfu_context.state != DFUDNBUSY ;
-  @ assigns \nothing; */
+        @ assumes dfu_context.state != DFUDNBUSY ;
+        @ assigns \nothing; 
+  */
+
+
 static void dfu_handle_dnbusy_timeout(void)
 {
     dfu_context_t * dfu_ctx = dfu_get_context();
 
+    #ifdef __FRAMAC__
+    //dfu_context.state = DFUDNBUSY ;
+    #endif/*!__FRAMAC__*/
+
     if (dfu_get_state() == DFUDNBUSY) {
-        uint64_t ms;
+        uint64_t ms = 0;
         uint8_t ret;
         ret = sys_get_systick(&ms, PREC_MILLI);
         if (ret != SYS_E_DONE) {
@@ -1024,16 +1071,14 @@ static bool dfu_cmd_queue_empty = true;
  */
 
 /*@
-  @ requires
-  \separated(
-  setup_packet + (..), &GHOST_opaque_libusbdci_privates, &GHOST_num_ctx,
-  (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
-  &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
-  &ready_for_data_receive, &ready_for_data_send, &dfu_cmd_queue,
-  &dfu_cmd_queue_empty
-  );
+  @ requires \separated(setup_packet + (..), &GHOST_opaque_libusbdci_privates, &GHOST_num_ctx,
+                        (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
+                        &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
+                        &ready_for_data_receive, &ready_for_data_send, &dfu_cmd_queue,
+                        &dfu_cmd_queue_empty);
   @ assigns dfu_context.state , GHOST_opaque_drv_privates, dfu_usb_write_in_progress, dfu_context.status;
-  @ ensures \result == MBED_ERROR_INVSTATE || \result == MBED_ERROR_NONE ; */
+  @ ensures \result == MBED_ERROR_INVSTATE || \result == MBED_ERROR_NONE ; 
+*/
 mbed_error_t dfu_request_detach(usbctrl_setup_pkt_t *setup_packet)
 {
     /* Sanity check */
@@ -1967,7 +2012,9 @@ err:
 static
 #endif
 /*@ assigns ready_for_data_receive, dfu_usb_read_in_progress, dfu_context.data_to_store;
-  @ ensures \result == MBED_ERROR_NONE && ready_for_data_receive == \true && dfu_usb_read_in_progress ==\false && dfu_context.data_to_store == \true; */
+  @ ensures \result == MBED_ERROR_NONE && ready_for_data_receive == \true 
+  && dfu_usb_read_in_progress ==\false && dfu_context.data_to_store == \true; 
+*/
 mbed_error_t dfu_data_out_handler(uint32_t dev_id __attribute__((unused)),
                                   uint32_t size __attribute__((unused)),
                                   uint8_t ep_id __attribute__((unused)))
