@@ -167,8 +167,8 @@ FRAMAC_GEN_FLAGS:=\
 		    -instantiate
 
 FRAMAC_EVA_FLAGS:=\
-		  -eva -main main -eva-slevel 400 \
-		    -eva-slevel-function  dfu_exec_automaton:400 \
+		  -eva -main main -eva-slevel 500 \
+		    -eva-slevel-function  dfu_exec_automaton:500 \
 		    -eva-domains symbolic-locations\
 		    -eva-domains equality \
 		    -eva-split-return auto \
