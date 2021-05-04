@@ -83,9 +83,6 @@ static uint32_t read_cnt = 0;
 	  dfu_usb_read_in_progress, dfu_context.data_to_store,
 	  dfu_usb_write_in_progress, dfu_context.block_in_progress,
 	  dfu_context.poll_start, dfu_context.poll_timeout_ms; 
-
-
-      
 */
 void dfu_usb_driver_setup_read(uint8_t *dst, uint32_t size){
 #ifdef __FRAMAC__ //pmo to check
@@ -1227,15 +1224,13 @@ mbed_error_t dfu_request_dnload(usbctrl_setup_pkt_t *setup_packet)
         log_printf("invalid setup pkt NULL\n");
         goto invalid_transition;
     }
-    /* Sanity check and next state detection */
-    uint8_t next_state;
+    /* Sanity check */
+
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
         /*@ assert (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[\at(dfu_context.state,Pre)].req_trans[i].request != setup_packet->bRequest) ; */
         goto invalid_transition;
     }
     /*@ assert !(\forall integer i; 0 <= i < 5 ==>  dfu_automaton[\at(dfu_context.state,Pre)].req_trans[i].request != setup_packet->bRequest) ; */
-    next_state = dfu_next_state(dfu_get_state(), setup_packet->bRequest);
-
 
     /* effective transition execution (if needed) */
     switch (dfu_get_state()) {
@@ -1520,6 +1515,7 @@ size_too_big:
 /*
  * Handle DFU_GETSTATUS event
  */
+
 mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t timestamp)
 {
     log_printf("%s\n", __func__);
@@ -1528,8 +1524,8 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
     if(setup_packet == NULL){
         goto invalid_transition;
     }
-    /* Sanity check and next state detection */
-    uint8_t next_state;
+    /* Sanity check */
+
     /* we use a union here because setup_send is using generic buffer as input (i.e. const uint8_t*) */
     union status_infos_t {
         device_dfu_status_t data;
@@ -1540,8 +1536,6 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
         goto invalid_transition;
     }
-    next_state = dfu_next_state(dfu_get_state(), setup_packet->bRequest);
-
 
     /* effective transition execution (if needed) */
     switch( dfu_get_state()) {
@@ -1721,9 +1715,6 @@ mbed_error_t dfu_request_getstatus(usbctrl_setup_pkt_t *setup_packet, uint64_t t
                 dfu_usb_driver_setup_send(&status.buf[0], sizeof(status));
                 break;
             }
-        default:
-            log_printf("maybe a missing state: check automaton\n");
-            break;
     }
     request_data_membarrier();
     return MBED_ERROR_NONE;
@@ -1739,9 +1730,75 @@ invalid_transition:
 /*
  * Handle DFU_CLEAR_STATUS event
  */
+
+// CDE TODO : assigns for transition OK unknown, not working with dfu_init_context
+
+/*@
+  @ requires \separated(setup_packet + (..), &GHOST_opaque_libusbdci_privates, &GHOST_num_ctx,
+                        (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
+                        &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
+                        &ready_for_data_receive, &ready_for_data_send, &dfu_cmd_queue,
+                        &dfu_cmd_queue_empty, &dfu_context.state, 
+                        &dfu_context.block_in_progress, &dfu_context.block_size,
+	  &dfu_context.can_download, &dfu_context.can_upload, &dfu_context.current_block_offset,
+	  &dfu_context.data_in_buffer, &dfu_context.data_in_current_block_nb, &dfu_context.data_in_length,
+	  &dfu_context.data_in_nb_blocks, &dfu_context.data_out_buffer, &dfu_context.data_out_current_block_nb,
+	  &dfu_context.data_out_length, &dfu_context.data_out_nb_blocks, &dfu_context.data_to_load,
+	  &dfu_context.data_to_store, &dfu_context.detach_timeout_ms, &dfu_context.detach_timeout_start,
+	  &dfu_context.firmware_size, &dfu_context.flash_address, &dfu_context.poll_start, &dfu_context.poll_timeout_ms,
+	  &dfu_context.session_in_progress, &dfu_context.status, &dfu_context.transfert_size);
+
+  @ behavior packet_ko:
+        @ assumes setup_packet == \null ;
+        @ assigns dfu_context.status, GHOST_opaque_drv_privates, ready_for_data_receive, dfu_usb_read_in_progress,
+            dfu_context.data_to_store, dfu_usb_write_in_progress,
+            dfu_context.block_in_progress, dfu_context.poll_start,
+            dfu_context.poll_timeout_ms;
+        @ ensures \result == MBED_ERROR_INVSTATE && dfu_context.status == ERRUNKNOWN;
+
+  @ behavior invalid_transition:
+        @ assumes setup_packet != \null ;
+        @ assumes (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[dfu_context.state].req_trans[i].request != setup_packet->bRequest) ;
+        @ assigns dfu_context.status, GHOST_opaque_drv_privates, ready_for_data_receive, dfu_usb_read_in_progress,
+            dfu_context.data_to_store, dfu_usb_write_in_progress,
+            dfu_context.block_in_progress, dfu_context.poll_start,
+            dfu_context.poll_timeout_ms , dfu_context.state;
+        @ ensures \result == MBED_ERROR_INVSTATE && dfu_context.status == ERRUNKNOWN && dfu_context.state == DFUERROR ;
+
+  @ behavior transition_ok:
+        @ assumes setup_packet != \null ;
+        @ assumes !(\forall integer i; 0 <= i < 5 ==>  dfu_automaton[dfu_context.state].req_trans[i].request != setup_packet->bRequest) ;
+  @ assigns dfu_context.block_in_progress, dfu_context.session_in_progress, dfu_context.status, 
+  dfu_context.state, dfu_context.data_out_buffer, dfu_context.data_in_buffer, 
+  dfu_context.data_out_current_block_nb, dfu_context.data_out_nb_blocks, 
+  dfu_context.data_out_length, dfu_context.data_in_nb_blocks, dfu_context.data_in_current_block_nb, 
+  dfu_context.data_in_length, dfu_context.flash_address, dfu_context.detach_timeout_ms, 
+  dfu_context.detach_timeout_start, dfu_context.poll_timeout_ms, dfu_context.poll_start, 
+  dfu_context.block_size, dfu_context.transfert_size, dfu_context.firmware_size, 
+  dfu_context.current_block_offset, dfu_context.data_to_store, dfu_context.data_to_load, 
+  dfu_context.can_download, dfu_context.can_upload, 
+  *((char*)&dfu_context.iface+ (0 .. sizeof(usbctrl_interface_t) -1)),
+  dfu_usb_write_in_progress, GHOST_opaque_drv_privates,
+    dfu_context.iface.id, dfu_context.iface.usb_class ,
+    dfu_context.iface.usb_subclass ,
+    dfu_context.iface.usb_protocol ,
+    dfu_context.iface.dedicated ,
+    dfu_context.iface.rqst_handler ,
+    dfu_context.iface.class_desc_handler ,
+    dfu_context.iface.usb_ep_number ,
+    dfu_context.iface.composite_function ,
+    dfu_context.iface.composite_function_id ;
+        @ ensures \result == MBED_ERROR_NONE ;
+
+  @ complete behaviors;
+  @ disjoint behaviors;
+*/
+
 mbed_error_t dfu_request_clrstatus(usbctrl_setup_pkt_t *setup_packet)
 {
     dfu_context_t *dfu_ctx = dfu_get_context();
+    /*@ assert *dfu_ctx == dfu_context ; */
+
     /* Sanity check */
     if(setup_packet == NULL){
         goto invalid_transition;
@@ -1749,12 +1806,16 @@ mbed_error_t dfu_request_clrstatus(usbctrl_setup_pkt_t *setup_packet)
     /* Sanity check and next state detection */
     uint8_t next_state;
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
+    /*@ assert (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[\at(dfu_context.state,Pre)].req_trans[i].request != setup_packet->bRequest) ; */
         goto invalid_transition;
     }
+    /*@ assert !(\forall integer i; 0 <= i < 5 ==>  dfu_automaton[\at(dfu_context.state,Pre)].req_trans[i].request != setup_packet->bRequest) ; */
     next_state = dfu_next_state(dfu_get_state(), setup_packet->bRequest);
 
     /* effective transition execution (if needed) */
+    /*@ assert *dfu_ctx == dfu_context ; */
     dfu_init_context(dfu_ctx);
+    /*@ assert *dfu_ctx == dfu_context ; */
     dfu_set_state(next_state);
     dfu_usb_driver_setup_send_status(0);
     request_data_membarrier();
@@ -1770,6 +1831,45 @@ invalid_transition:
 /*
  * Handle DFU_GETSTATE event
  */
+
+/*@
+  @ requires \separated(setup_packet + (..), &GHOST_opaque_libusbdci_privates, &GHOST_num_ctx,
+                        (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
+                        &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
+                        &ready_for_data_receive, &ready_for_data_send, &dfu_cmd_queue,
+                        &dfu_cmd_queue_empty, &dfu_context.state);
+
+  @ behavior packet_ko:
+        @ assumes setup_packet == \null ;
+        @ assigns dfu_context.status, GHOST_opaque_drv_privates, ready_for_data_receive, dfu_usb_read_in_progress,
+            dfu_context.data_to_store, dfu_usb_write_in_progress,
+            dfu_context.block_in_progress, dfu_context.poll_start,
+            dfu_context.poll_timeout_ms;
+        @ ensures \result == MBED_ERROR_INVSTATE && dfu_context.status == ERRUNKNOWN;
+
+  @ behavior invalid_transition:
+        @ assumes setup_packet != \null ;
+        @ assumes (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[dfu_context.state].req_trans[i].request != setup_packet->bRequest) ;
+        @ assigns dfu_context.status, GHOST_opaque_drv_privates, ready_for_data_receive, dfu_usb_read_in_progress,
+            dfu_context.data_to_store, dfu_usb_write_in_progress,
+            dfu_context.block_in_progress, dfu_context.poll_start,
+            dfu_context.poll_timeout_ms , dfu_context.state;
+        @ ensures \result == MBED_ERROR_INVSTATE && dfu_context.status == ERRUNKNOWN && dfu_context.state == DFUERROR ;
+
+  @ behavior transition_ok :
+        @ assumes setup_packet != \null ;
+        @ assumes !(\forall integer i; 0 <= i < 5 ==>  dfu_automaton[dfu_context.state].req_trans[i].request != setup_packet->bRequest) ;
+        @ ensures \result == MBED_ERROR_NONE ;
+        @ assigns ready_for_data_receive, GHOST_opaque_drv_privates,
+            dfu_usb_read_in_progress, dfu_context.data_to_store,
+            dfu_usb_write_in_progress, dfu_context.block_in_progress,
+            dfu_context.poll_start, dfu_context.poll_timeout_ms,
+            GHOST_in_eps[0].state ;
+
+  @ complete behaviors;
+  @ disjoint behaviors;
+*/
+
 mbed_error_t dfu_request_getstate(usbctrl_setup_pkt_t *setup_packet)
 {
     /* Sanity check */
@@ -1777,11 +1877,15 @@ mbed_error_t dfu_request_getstate(usbctrl_setup_pkt_t *setup_packet)
         goto invalid_transition;
     }
     /* Sanity check and next state detection */
-    uint8_t next_state;
+    //uint8_t next_state;
     if (!dfu_is_valid_transition(dfu_get_state(), setup_packet->bRequest)) {
+    /*@ assert (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[\at(dfu_context.state,Pre)].req_trans[i].request != setup_packet->bRequest) ; */
         goto invalid_transition;
     }
-    next_state = dfu_next_state(dfu_get_state(), setup_packet->bRequest);
+    /*@ assert !(\forall integer i; 0 <= i < 5 ==>  dfu_automaton[\at(dfu_context.state,Pre)].req_trans[i].request != setup_packet->bRequest) ; */
+
+    // CDE : next state not used in this fcn
+    //next_state = dfu_next_state(dfu_get_state(), setup_packet->bRequest);
 
     /* effective transition execution (if needed) */
     switch( dfu_get_state()) {
