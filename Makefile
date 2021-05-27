@@ -184,7 +184,7 @@ FRAMAC_EVA_FLAGS:=\
 		    -eva-log a:frama-c-rte-eva.log
 
 ifeq (22,$(FRAMAC_VERSION))
-FRAMAC_WP_SUPP_FLAGS=-wp-check-memory-model
+FRAMAC_WP_SUPP_FLAGS=
 else
 FRAMAC_WP_SUPP_FLAGS=
 endif
