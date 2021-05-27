@@ -58,18 +58,37 @@ dfu_context_t * dfu_get_context(void)
 
 /*@
   @ requires \separated(
-          (usbctrl_context_t *)ctx_list + (..),
-          &num_ctx,  &ctx->block_in_progress, &ctx->block_size, 
-	  &ctx->can_download, &ctx->can_upload, &ctx->current_block_offset, 
-	  &ctx->data_in_buffer, &ctx->data_in_current_block_nb, &ctx->data_in_length, 
-	  &ctx->data_in_nb_blocks, &ctx->data_out_buffer, &ctx->data_out_current_block_nb, 
-	  &ctx->data_out_length, &ctx->data_out_nb_blocks, &ctx->data_to_load, 
-	  &ctx->data_to_store, &ctx->detach_timeout_ms, &ctx->detach_timeout_start, 
-	  &ctx->firmware_size, &ctx->flash_address, &ctx->poll_start, &ctx->poll_timeout_ms, 
+          &GHOST_opaque_libusbdci_privates,
+          &GHOST_num_ctx,
+          &ctx->block_in_progress, &ctx->block_size,
+	  &ctx->can_download, &ctx->can_upload, &ctx->current_block_offset,
+	  &ctx->data_in_buffer, &ctx->data_in_current_block_nb, &ctx->data_in_length,
+	  &ctx->data_in_nb_blocks, &ctx->data_out_buffer, &ctx->data_out_current_block_nb,
+	  &ctx->data_out_length, &ctx->data_out_nb_blocks, &ctx->data_to_load,
+	  &ctx->data_to_store, &ctx->detach_timeout_ms, &ctx->detach_timeout_start,
+	  &ctx->firmware_size, &ctx->flash_address, &ctx->poll_start, &ctx->poll_timeout_ms,
 	  &ctx->session_in_progress, &ctx->state, &ctx->status, &ctx->transfert_size);
   @ requires \valid(ctx);
-  @ assigns ctx->block_in_progress, ctx->session_in_progress, ctx->status, ctx->state, ctx->data_out_buffer, ctx->data_in_buffer, ctx->data_out_current_block_nb, ctx->data_out_nb_blocks, ctx->data_out_length, ctx->data_in_nb_blocks, ctx-> data_in_current_block_nb, ctx->data_in_length, ctx->flash_address, ctx->detach_timeout_ms, ctx->detach_timeout_start, ctx->poll_timeout_ms, ctx->poll_start, ctx->block_size, ctx->transfert_size, ctx->firmware_size, ctx->current_block_offset, ctx->data_to_store, ctx->data_to_load, ctx->can_download, ctx->can_upload, *((char*)&ctx->iface+ (0 .. sizeof(usbctrl_interface_t) -1)) ;
+  @ assigns ctx->block_in_progress, ctx->session_in_progress, ctx->status,
+  ctx->state, ctx->data_out_buffer, ctx->data_in_buffer, ctx->data_out_current_block_nb,
+  ctx->data_out_nb_blocks, ctx->data_out_length, ctx->data_in_nb_blocks,
+  ctx-> data_in_current_block_nb, ctx->data_in_length, ctx->flash_address,
+  ctx->detach_timeout_ms, ctx->detach_timeout_start, ctx->poll_timeout_ms,
+  ctx->poll_start, ctx->block_size, ctx->transfert_size, ctx->firmware_size,
+  ctx->current_block_offset, ctx->data_to_store, ctx->data_to_load,
+  ctx->can_download, ctx->can_upload, *((char*)&ctx->iface+ (0 .. sizeof(usbctrl_interface_t) -1)),
+  ctx->iface.id, ctx->iface.usb_class ,
+    ctx->iface.usb_subclass ,
+    ctx->iface.usb_protocol ,
+    ctx->iface.dedicated ,
+    ctx->iface.rqst_handler ,
+    ctx->iface.class_desc_handler ,
+    ctx->iface.usb_ep_number ,
+    ctx->iface.composite_function ,
+    ctx->iface.composite_function_id ;
+
  @*/
+
 void dfu_init_context(dfu_context_t *ctx)
 {
     uint16_t transfert_size = ctx->transfert_size != 0 ? ctx->transfert_size : 0;
@@ -111,7 +130,20 @@ void dfu_init_context(dfu_context_t *ctx)
     ctx->can_upload = false;
 #endif
 
+#ifndef __FRAMAC__
     memset((void*)&ctx->iface, 0x0, sizeof(usbctrl_interface_t));
+#else
+    ctx->iface.id = 0;
+    ctx->iface.usb_class = 0;
+    ctx->iface.usb_subclass = 0;
+    ctx->iface.usb_protocol = 0;
+    ctx->iface.dedicated = 0;
+    ctx->iface.rqst_handler = NULL;
+    ctx->iface.class_desc_handler = NULL;
+    ctx->iface.usb_ep_number = 0;
+    ctx->iface.composite_function = false;
+    ctx->iface.composite_function_id = 0;
+#endif
     request_data_membarrier();
 }
 
