@@ -162,13 +162,12 @@ FRAMAC_GEN_FLAGS:=\
 	        -warn-unsigned-overflow \
 	        -warn-invalid-pointer \
 			-kernel-msg-key pp \
-			-cpp-extra-args="-nostdinc -I framac/include  -I $(LIBUSB_DIR) -I $(LIBSTD_API_DIR) -I $(EWOK_API_DIR) -I $(USBOTGHS_DIR) -I $(USBOTGHS_DEVHEADER_PATH)"  \
+			-cpp-extra-args="-nostdinc -I framac/include  -I $(LIBUSB_DIR)/api $(LIBUSB_DIR) -I $(LIBSTD_API_DIR) -I $(EWOK_API_DIR) -I $(USBOTGHS_API_DIR) -I $(USBOTGHS_DEVHEADER_PATH)"  \
 		    -rte \
 		    -instantiate
 
 FRAMAC_EVA_FLAGS:=\
-		  -eva -main main -eva-slevel 500 \
-		    -eva-slevel-function  dfu_exec_automaton:500 \
+		  -eva -main dfu_request_getstate -eva-slevel 500 \
 		    -eva-domains symbolic-locations\
 		    -eva-domains equality \
 		    -eva-split-return auto \
@@ -188,7 +187,7 @@ FRAMAC_EVA_FLAGS:=\
 		    -eva-log a:frama-c-rte-eva.log
 
 ifeq (22,$(FRAMAC_VERSION))
-FRAMAC_WP_SUPP_FLAGS=-wp-check-memory-model
+FRAMAC_WP_SUPP_FLAGS=
 else
 FRAMAC_WP_SUPP_FLAGS=
 endif
@@ -210,7 +209,7 @@ frama-c-parsing:
 	frama-c framac/entrypoint.c dfu*.c \
 		 -c11 \
 		 -no-frama-c-stdlib \
-		 -cpp-extra-args="-nostdinc -I framac/include -I $(LIBUSB_DIR)/api -I $(LIBUSB_DIR) -I $(LIBSTD_API_DIR) -I $(EWOK_API_DIR) -I $(USBOTGHS_DIR) -I $(USBOTGHS_DEVHEADER_PATH)"
+		 -cpp-extra-args="-nostdinc -I framac/include -I $(LIBUSB_DIR)/api -I $(LIBUSB_DIR) -I $(LIBSTD_API_DIR) -I $(EWOK_API_DIR) -I $(USBOTGHS_API_DIR) -I $(USBOTGHS_DEVHEADER_PATH)"
 
 frama-c-eva:
 	frama-c framac/entrypoint.c dfu*.c -c11 \
