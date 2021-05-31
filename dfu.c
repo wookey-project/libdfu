@@ -592,48 +592,6 @@ static uint8_t dfu_next_state(dfu_state_enum_t  current_state, dfu_request_t    
  * \return true if the transition request is allowed for this state, or false
  */
 
-/* @
-
-  @ requires USB_RQST_DFU_DETACH <= request <= USB_RQST_DFU_ABORT;
-  @ requires \separated(dfu_automaton + (0 .. DFUERROR),&dfu_context.state);*/
-
-// PMO en mode behavior KO assigns ne passe pas
-
-/* @
-  @ requires APPIDLE <= current_state <= DFUERROR;
-  @ requires \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
-  @ requires \separated(&GHOST_opaque_libusbdci_privates, &GHOST_num_ctx, (struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (..),
-  &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
-  &ready_for_data_receive, &ready_for_data_send,  &dfu_context.state );
-  @ assigns dfu_context.state;
-  @ ensures \result == \true <==> (\exists integer i; 0 <= i < 5 && dfu_automaton[current_state].req_trans[i].request == request) && (dfu_context.state == \old(dfu_context.state));
-  @ ensures \result == \false <==> (\forall integer i; 0 <= i < 5 ==>  dfu_automaton[current_state].req_trans[i].request != request) && (dfu_context.state == DFUERROR);
- */
-// @ requires \separated(dfu_automaton + (0 .. DFUERROR),&dfu_context.state);
-
-// PMO en mode behavior KO assigns ne passe pas
-/*@
-  @ requires APPIDLE <= current_state <= DFUERROR;
-  @ requires \valid_read(dfu_automaton[current_state].req_trans + (0 .. 4));
-  @ requires \separated((struct __anonstruct_dfu_automaton_83 const *)dfu_automaton + (0..DFUERROR),
-			 &num_ctx, &dfu_usb_read_in_progress, &dfu_usb_write_in_progress,
-			 &ready_for_data_receive, &ready_for_data_send,  &dfu_context.state,
-			 &GHOST_opaque_drv_privates );
-  @
-  @ behavior OK:
-  @ assumes  \exists integer i; 0 <= i < 5 && dfu_automaton[current_state].req_trans[i].request == request ;
-  @ assigns \nothing;
-  @ ensures \result == \true;
-  @
-  @ behavior KO:
-  @ assumes (\forall integer i; 0 <= i < 5 ==> dfu_automaton[current_state].req_trans[i].request != request)  ;
-  @ assigns dfu_context.state;
-  @ ensures dfu_context.state == DFUERROR && \result == \false;
-  @
-  @ complete behaviors;
-  @ disjoint behaviors;
- */
-
 // CDE TODO : ensures proove equivalence for \result == \false
 
 /*@
